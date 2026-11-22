@@ -536,8 +536,7 @@ const ANBIETER = [
   { id: 'onedrive', icon: '🟦', name: 'OneDrive', schritte: 'OneDrive-App installieren und anmelden. Einmalig: Dateien-App › Durchsuchen › ⋯ › Bearbeiten › „OneDrive“ einschalten. Dann: Sichern › „In Dateien sichern“ › OneDrive wählen.' },
   { id: 'dropbox', icon: '📦', name: 'Dropbox', schritte: 'Dropbox-App installieren und anmelden. Einmalig in der Dateien-App unter Durchsuchen › Bearbeiten „Dropbox“ einschalten. Dann: Sichern › „In Dateien sichern“ › Dropbox wählen.' },
   { id: 'gdrive', icon: '🟩', name: 'Google Drive', schritte: 'Google-Drive-App installieren und anmelden, in der Dateien-App einschalten. Dann: Sichern › „In Dateien sichern“ › Google Drive wählen.' },
-  { id: 'android', icon: '🤖', name: 'Android', schritte: 'Sichern › im Teilen-Menü die Drive-, OneDrive- oder Dropbox-App wählen – oder „Speichern unter“ und einen Ordner aussuchen.' },
-  { id: 'claude', icon: '✳️', name: 'Claude', schritte: 'Sichern › im Teilen-Menü die Claude-App wählen (falls sie dort erscheint) – oder die gespeicherte Datei in einem Claude-Projekt unter „Projektwissen“ hochladen. Eine direkte Verbindung zu Claude gibt es nicht; zum Zurückholen die Datei aus Claude herunterladen und hier laden.' }
+  { id: 'android', icon: '🤖', name: 'Android', schritte: 'Sichern › im Teilen-Menü die Drive-, OneDrive- oder Dropbox-App wählen – oder „Speichern unter“ und einen Ordner aussuchen.' }
 ];
 
 export async function backupView(_p, ctx) {
@@ -582,7 +581,7 @@ export async function backupView(_p, ctx) {
 
     <div class="card">
       <h3 style="margin-top:0">📂 Sicherung laden</h3>
-      <p class="small">Lädt eine Sicherung – auch von einem anderen Gerät oder aus OneDrive, Dropbox, Google Drive, iCloud oder Claude (vorher dort herunterladen). Vorhandene Daten bleiben erhalten, gleiche Einträge werden aktualisiert.</p>
+      <p class="small">Lädt eine Sicherung – auch von einem anderen Gerät oder aus OneDrive, Dropbox, Google Drive oder iCloud. Vorhandene Daten bleiben erhalten, gleiche Einträge werden aktualisiert.</p>
       <label class="btn secondary block" for="bk-file">Datei auswählen …</label>
       <input id="bk-file" type="file" accept=".json,application/json" hidden>
       ${ordner ? '<button class="btn secondary block" id="bk-aus-ordner" style="margin-top:10px">Aus Sicherungsordner laden …</button><div id="bk-liste"></div>' : ''}

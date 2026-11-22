@@ -1,0 +1,42 @@
+{
+  "schema": "vokabel-studio-import/1",
+  "inhaltstyp": "vokabelliste",
+  "fach": "latein",
+  "lehrwerk": { "titel": "Beispiel-Lehrwerk Latein", "band": "" },
+  "unit": { "nummer": "1", "titel": "In villa" },
+  "seiten": ["Demo"],
+  "parts": [
+    {
+      "kennung": "A",
+      "vokabeln": [
+        { "wort": "amīcus", "wortart": "nomen", "bedeutungen": ["Freund"],
+          "formen": { "genitiv": "amīcī", "genus": "m", "deklination": "o" }, "wortfamilie": ["Amigo", "amicable (engl.)"] },
+        { "wort": "amīca", "wortart": "nomen", "bedeutungen": ["Freundin"],
+          "formen": { "genitiv": "amīcae", "genus": "f", "deklination": "a" } },
+        { "wort": "villa", "wortart": "nomen", "bedeutungen": ["Landhaus", "Haus"],
+          "formen": { "genitiv": "villae", "genus": "f", "deklination": "a" }, "wortfamilie": ["Villa", "village (engl.)"] },
+        { "wort": "servus", "wortart": "nomen", "bedeutungen": ["Sklave", "Diener"],
+          "formen": { "genitiv": "servī", "genus": "m", "deklination": "o" }, "wortfamilie": ["Servus! (Gruß)", "servieren"] },
+        { "wort": "vocāre", "wortart": "verb", "bedeutungen": ["rufen", "nennen"],
+          "formen": { "stammformen": ["vocāre", "vocō", "vocāvī", "vocātum"], "konjugation": "a" }, "wortfamilie": ["Vokal", "vocal (engl.)"] },
+        { "wort": "vidēre", "wortart": "verb", "bedeutungen": ["sehen"],
+          "formen": { "stammformen": ["vidēre", "videō", "vīdī", "vīsum"], "konjugation": "e" }, "wortfamilie": ["Video", "Vision"] },
+        { "wort": "labōrāre", "wortart": "verb", "bedeutungen": ["arbeiten"],
+          "formen": { "stammformen": ["labōrāre", "labōrō", "labōrāvī", "labōrātum"], "konjugation": "a" }, "wortfamilie": ["Labor"] },
+        { "wort": "bonus", "wortart": "adjektiv", "bedeutungen": ["gut"],
+          "formen": { "adjektiv_endungen": "-a, -um" }, "wortfamilie": ["Bonus", "Bonbon"] },
+        { "wort": "et", "wortart": "konjunktion", "bedeutungen": ["und", "auch"] },
+        { "wort": "nōn", "wortart": "adverb", "bedeutungen": ["nicht"] }
+      ]
+    }
+  ],
+  "lernsaetze": [
+    { "fremd": "Servus labōrat.", "deutsch": "Der Sklave arbeitet.", "woerter": ["servus", "labōrāre"], "part": "A" },
+    { "fremd": "Amīcus villam videt.", "deutsch": "Der Freund sieht das Landhaus.", "woerter": ["amīcus", "villa", "vidēre"], "part": "A" },
+    { "fremd": "Amīca bona nōn labōrat.", "deutsch": "Die gute Freundin arbeitet nicht.", "woerter": ["amīca", "bonus", "nōn", "labōrāre"], "part": "A" }
+  ],
+  "satzbau": [
+    { "deutsch": "Der Freund ruft den Sklaven.", "loesung": "Amīcus servum vocat.", "alternativen": ["Servum amīcus vocat."], "ablenker": ["servus", "vocāre"], "woerter": ["amīcus", "servus", "vocāre"], "part": "A" }
+  ],
+  "hinweise": ["Beispiel-Lektion zum Ausprobieren, selbst geschrieben – nicht aus einem Schulbuch."]
+}

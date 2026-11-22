@@ -1,0 +1,69 @@
+{
+  "schema": "vokabel-studio-import/1",
+  "inhaltstyp": "vokabelliste",
+  "fach": "englisch",
+  "lehrwerk": { "titel": "Beispiel-Lehrwerk Englisch", "band": "" },
+  "unit": { "nummer": "1", "titel": "A trip to the mountains" },
+  "seiten": ["Demo"],
+  "parts": [
+    {
+      "kennung": "A",
+      "vokabeln": [
+        { "wort": "mountain", "lautschrift": "ˈmaʊntən", "wortart": "nomen", "bedeutungen": ["Berg"],
+          "beispiele": [{ "fremd": "Snowdon is the highest mountain in Wales.", "deutsch": "Der Snowdon ist der höchste Berg in Wales.", "quelle": "ki" }],
+          "wortfamilie": ["mountainous (bergig)"], "stolpersteine": ["Endung schwach gesprochen: ˈmaʊntən."] },
+        { "wort": "valley", "lautschrift": "ˈvæli", "wortart": "nomen", "bedeutungen": ["Tal"],
+          "beispiele": [{ "fremd": "There is a small village in the valley.", "deutsch": "Im Tal liegt ein kleines Dorf.", "quelle": "ki" }],
+          "stolpersteine": ["Plural: valleys (nicht 'vallies')."] },
+        { "wort": "sheep", "lautschrift": "ʃiːp", "wortart": "nomen", "bedeutungen": ["Schaf", "Schafe"], "formen": { "plural": "sheep" },
+          "beispiele": [{ "fremd": "There are a lot of sheep on the hills.", "deutsch": "Auf den Hügeln gibt es viele Schafe.", "quelle": "ki" }],
+          "stolpersteine": ["Plural ist auch sheep – kein -s!", "Nicht verwechseln mit ship (Schiff)."] },
+        { "wort": "castle", "lautschrift": "ˈkɑːsl", "wortart": "nomen", "bedeutungen": ["Burg", "Schloss"],
+          "beispiele": [{ "fremd": "We visited an old castle near the sea.", "deutsch": "Wir haben eine alte Burg am Meer besucht.", "quelle": "ki" }],
+          "stolpersteine": ["Das t wird nicht gesprochen."] },
+        { "wort": "lake", "lautschrift": "leɪk", "wortart": "nomen", "bedeutungen": ["See"],
+          "stolpersteine": ["der See = lake, die See (Meer) = sea."] },
+        { "wort": "(to) climb", "lautschrift": "klaɪm", "wortart": "verb", "bedeutungen": ["klettern", "besteigen"],
+          "beispiele": [{ "fremd": "Let's climb to the top!", "deutsch": "Lass uns bis zum Gipfel klettern!", "quelle": "ki" }],
+          "wortfamilie": ["climber (Kletterer/Kletterin)"], "stolpersteine": ["Das b wird nicht gesprochen."] },
+        { "wort": "view", "lautschrift": "vjuː", "wortart": "nomen", "bedeutungen": ["Aussicht", "Blick"],
+          "erklaerung": "what you can see from a place",
+          "stolpersteine": ["a view OF something – Blick AUF etwas."] },
+        { "wort": "path", "lautschrift": "pɑːθ", "wortart": "nomen", "bedeutungen": ["Pfad", "Weg"], "synonyme": ["way", "track"] }
+      ]
+    },
+    {
+      "kennung": "B",
+      "vokabeln": [
+        { "wort": "weather", "lautschrift": "ˈweðə", "wortart": "nomen", "bedeutungen": ["Wetter"],
+          "stolpersteine": ["Gleiche Aussprache wie whether (ob)."] },
+        { "wort": "foggy", "lautschrift": "ˈfɒɡi", "wortart": "adjektiv", "bedeutungen": ["neblig"],
+          "gegenteile": ["clear", "sunny"], "wortfamilie": ["fog (Nebel)"] },
+        { "wort": "map", "lautschrift": "mæp", "wortart": "nomen", "bedeutungen": ["Landkarte", "Stadtplan"],
+          "stolpersteine": ["Falscher Freund: map ≠ Mappe (Mappe = folder)."] },
+        { "wort": "(to) get lost", "wortart": "wendung", "bedeutungen": ["sich verirren", "sich verlaufen"],
+          "formen": { "simple_past": "got lost", "past_participle": "got lost" } },
+        { "wort": "dangerous", "lautschrift": "ˈdeɪndʒərəs", "wortart": "adjektiv", "bedeutungen": ["gefährlich"],
+          "gegenteile": ["safe"], "wortfamilie": ["danger (Gefahr)"],
+          "andere_sprachen": [{ "sprache": "fr", "wort": "dangereux, dangereuse" }] },
+        { "wort": "suddenly", "lautschrift": "ˈsʌdnli", "wortart": "adverb", "bedeutungen": ["plötzlich"],
+          "beispiele": [{ "fremd": "Suddenly it started to rain.", "deutsch": "Plötzlich fing es an zu regnen.", "quelle": "ki" }] },
+        { "wort": "(to) hurt", "lautschrift": "hɜːt", "wortart": "verb", "bedeutungen": ["verletzen", "wehtun"],
+          "formen": { "simple_past": "hurt", "past_participle": "hurt" }, "stolpersteine": ["hurt – hurt – hurt"] },
+        { "wort": "helicopter", "lautschrift": "ˈhelɪkɒptə", "wortart": "nomen", "bedeutungen": ["Hubschrauber"],
+          "stolpersteine": ["Betonung auf der ersten Silbe: HE-licopter."] }
+      ]
+    }
+  ],
+  "lernsaetze": [
+    { "fremd": "The sheep are in the valley.", "deutsch": "Die Schafe sind im Tal.", "woerter": ["sheep", "valley"], "part": "A" },
+    { "fremd": "We climb the mountain and enjoy the view.", "deutsch": "Wir besteigen den Berg und genießen die Aussicht.", "woerter": ["(to) climb", "mountain", "view"], "part": "A" },
+    { "fremd": "Suddenly the weather was foggy.", "deutsch": "Plötzlich war das Wetter neblig.", "woerter": ["suddenly", "weather", "foggy"], "part": "B" },
+    { "fremd": "Without a map we got lost.", "deutsch": "Ohne Karte haben wir uns verlaufen.", "woerter": ["map", "(to) get lost"], "part": "B" }
+  ],
+  "satzbau": [
+    { "deutsch": "Es gibt viele Schafe im Tal.", "loesung": "There are a lot of sheep in the valley.", "alternativen": ["There are many sheep in the valley."], "ablenker": ["sheeps", "is"], "woerter": ["sheep", "valley"], "part": "A" },
+    { "deutsch": "Plötzlich wurde es neblig.", "loesung": "Suddenly it got foggy.", "alternativen": ["It suddenly got foggy."], "ablenker": ["fog", "was"], "woerter": ["suddenly", "foggy"], "part": "B" }
+  ],
+  "hinweise": ["Beispiel-Unit zum Ausprobieren, selbst geschrieben – nicht aus einem Schulbuch."]
+}

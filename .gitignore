@@ -1,0 +1,4 @@
+# Abgeschriebene Schulbuchinhalte (Urheberrecht Verlag) – nie veröffentlichen
+privat/
+*.backup.json
+.claude/

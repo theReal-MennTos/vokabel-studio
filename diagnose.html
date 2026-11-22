@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gerätetest</title>
+  <meta name="theme-color" content="#2f5bd3">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+  <style>
+    .row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .row:last-child { border-bottom: 0; }
+    .row .k { color: var(--muted); }
+    .row .v { font-weight: 600; text-align: right; }
+    .ergebnis { min-height: 24px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="topbar-back" href="./#/einstellungen" aria-label="Zurück" style="display:flex;align-items:center;justify-content:center;text-decoration:none;color:inherit">‹</a>
+    <h1 class="topbar-title">Gerätetest</h1>
+  </header>
+  <main>
+    <p>Dieser Test prüft, was auf diesem Gerät geht. Tippe die Knöpfe nacheinander an. Am Ende kannst du den Bericht kopieren und weitergeben.</p>
+    <p class="msg info small">Am aussagekräftigsten: einmal in <strong>Safari</strong> testen und einmal in der App vom <strong>Home-Bildschirm</strong>. Die Ergebnisse können sich unterscheiden.</p>
+
+    <div class="card"><h3 style="margin-top:0">Gerät</h3><div id="geraet"></div></div>
+
+    <div class="card">
+      <h3 style="margin-top:0">🔊 Vorlesen</h3>
+      <div id="stimmen" class="small muted">Stimmen werden geladen …</div>
+      <div class="btn-row">
+        <button class="btn soft" data-tts="en-GB" data-text="Welcome to Snowdonia. The path to the top is steep.">Englisch (GB)</button>
+        <button class="btn soft" data-tts="de-DE" data-text="Das ist ein Test der deutschen Stimme.">Deutsch</button>
+        <button class="btn soft" data-tts="it-IT" data-text="Salvete, amici! Puella villam videt.">Latein (it.)</button>
+      </div>
+      <div class="ergebnis small" id="tts-erg"></div>
+      <p class="hinweis-latein">🇮🇹 Für Latein wird eine italienische Stimme genutzt.</p>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">🎤 Spracheingabe</h3>
+      <div id="stt-da" class="small"></div>
+      <div class="btn-row">
+        <button class="btn soft" data-stt="en-GB">Englisch sprechen</button>
+        <button class="btn soft" data-stt="de-DE">Deutsch sprechen</button>
+      </div>
+      <p class="small muted">Nach dem Tippen z. B. „mountain“ bzw. „Berg“ sagen.</p>
+      <div class="ergebnis small" id="stt-erg"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">💾 Speicher, Kopieren, Teilen</h3>
+      <div class="btn-row">
+        <button class="btn soft" id="t-speicher">Speicher testen</button>
+        <button class="btn soft" id="t-copy">Kopieren testen</button>
+        <button class="btn soft" id="t-share">Teilen testen</button>
+      </div>
+      <div class="ergebnis small" id="misc-erg"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">📋 Bericht</h3>
+      <pre id="bericht" class="prompt-box" style="max-height:260px"></pre>
+      <button class="btn block" id="t-bericht">Bericht kopieren</button>
+    </div>
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module">
+    import { stimmen, sprich, hoere, sttKlasse, ttsVerfuegbar } from './js/speech.js';
+    import { copyText, toast, isStandalone, isIOS, esc } from './js/util.js';
+
+    const B = {};   // Bericht
+    const setze = (k, v) => { B[k] = v; document.getElementById('bericht').textContent = Object.entries(B).map(([a, b]) => `${a}: ${b}`).join('\n'); };
+    const row = (k, v) => `<div class="row"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
+
+    const ua = navigator.userAgent;
+    const iosVer = (/OS (\d+)_(\d+)/.exec(ua) || []).slice(1).join('.');
+    const g = {
+      'Gerät': isIOS() ? (/iPad/.test(ua) || navigator.maxTouchPoints > 1 && /Mac/.test(ua) ? 'iPad' : 'iPhone') : (navigator.platform || '?'),
+      'iOS-Version': iosVer || (/Version\/([\d.]+)/.exec(ua)?.[1] ? 'Safari ' + /Version\/([\d.]+)/.exec(ua)[1] : '–'),
+      'Modus': isStandalone() ? 'Home-Bildschirm-App' : 'Browser-Tab',
+      'Vorlesen vorhanden': ttsVerfuegbar() ? 'ja' : 'nein',
+      'Spracheingabe vorhanden': sttKlasse() ? 'ja' : 'nein',
+      'Teilen von Dateien': navigator.canShare ? 'ja' : 'nein',
+      'Dauerhafter Speicher (API)': navigator.storage?.persist ? 'ja' : 'nein'
+    };
+    document.getElementById('geraet').innerHTML = Object.entries(g).map(([k, v]) => row(k, v)).join('');
+    Object.entries(g).forEach(([k, v]) => setze(k, v));
+    setze('User-Agent', ua);
+    document.getElementById('stt-da').textContent = sttKlasse() ? 'Spracheingabe-Schnittstelle gefunden.' : '❌ Diese Umgebung hat keine Spracheingabe-Schnittstelle. In der App wird dann getippt.';
+
+    stimmen().then((v) => {
+      const zaehl = (p) => v.filter((x) => x.lang.toLowerCase().startsWith(p));
+      const liste = (p) => zaehl(p).map((x) => `${x.name} (${x.lang})`).join(', ') || 'keine';
+      document.getElementById('stimmen').innerHTML =
+        `Stimmen insgesamt: ${v.length}<br>Englisch: ${esc(liste('en-gb'))}<br>Deutsch: ${esc(liste('de'))}<br>Italienisch: ${esc(liste('it'))}`;
+      setze('Stimmen gesamt', v.length);
+      setze('Stimmen en-GB', liste('en-gb'));
+      setze('Stimmen en (alle)', zaehl('en').length);
+      setze('Stimmen de', liste('de'));
+      setze('Stimmen it', liste('it'));
+    });
+
+    document.querySelectorAll('[data-tts]').forEach((b) => b.onclick = async () => {
+      const erg = document.getElementById('tts-erg');
+      erg.textContent = '… spricht';
+      const t0 = performance.now();
+      const r = await sprich(b.dataset.text, b.dataset.tts);
+      const ms = Math.round(performance.now() - t0);
+      const txt = r.ok ? `✓ ${b.dataset.tts}: Stimme „${r.stimme}“${r.timeout ? ' (Ende nicht gemeldet)' : ''}, ${ms} ms` : `❌ ${b.dataset.tts}: ${r.grund}`;
+      erg.textContent = txt + ' – Hast du etwas gehört? Wenn nicht: Lautstärke/Stummschalter prüfen.';
+      setze('TTS ' + b.dataset.tts, txt);
+    });
+
+    document.querySelectorAll('[data-stt]').forEach((b) => b.onclick = async () => {
+      const erg = document.getElementById('stt-erg');
+      erg.textContent = '🎤 Hört zu … jetzt sprechen';
+      const r = await hoere(b.dataset.stt);
+      const txt = r.ok ? `✓ ${b.dataset.stt}: „${r.text}“${r.alternativen.length > 1 ? ' (Alternativen: ' + r.alternativen.slice(1).join(', ') + ')' : ''}` : `❌ ${b.dataset.stt}: ${r.grund}`;
+      erg.textContent = txt;
+      setze('STT ' + b.dataset.stt, txt);
+    });
+
+    document.getElementById('t-speicher').onclick = async () => {
+      const out = [];
+      try {
+        await new Promise((res, rej) => {
+          const rq = indexedDB.open('vs-diagnose', 1);
+          rq.onupgradeneeded = () => rq.result.createObjectStore('t');
+          rq.onsuccess = () => { const tx = rq.result.transaction('t', 'readwrite'); tx.objectStore('t').put(Date.now(), 'x'); tx.oncomplete = res; tx.onerror = () => rej(tx.error); };
+          rq.onerror = () => rej(rq.error);
+        });
+        out.push('IndexedDB ✓');
+      } catch (e) { out.push('IndexedDB ❌ ' + e.message); }
+      try {
+        if (navigator.storage?.estimate) { const e = await navigator.storage.estimate(); out.push(`Belegt ${(e.usage / 1048576).toFixed(1)} MB von ca. ${(e.quota / 1048576).toFixed(0)} MB`); }
+        if (navigator.storage?.persist) out.push('Dauerhaft: ' + ((await navigator.storage.persist()) ? 'ja ✓' : 'abgelehnt'));
+      } catch (e) { out.push('Speicher-API ❌ ' + e.message); }
+      document.getElementById('misc-erg').textContent = out.join(' · ');
+      setze('Speicher', out.join(' · '));
+    };
+    document.getElementById('t-copy').onclick = async () => {
+      const ok = await copyText('Vokabel-Studio Kopiertest');
+      document.getElementById('misc-erg').textContent = ok ? 'Kopieren ✓' : 'Kopieren ❌';
+      setze('Kopieren', ok ? 'ok' : 'fehlgeschlagen');
+    };
+    document.getElementById('t-share').onclick = async () => {
+      const file = new File(['Testdatei'], 'test.txt', { type: 'text/plain' });
+      let r;
+      if (!navigator.canShare || !navigator.canShare({ files: [file] })) r = 'Dateien teilen nicht möglich';
+      else { try { await navigator.share({ files: [file] }); r = 'Teilen ✓'; } catch (e) { r = e.name === 'AbortError' ? 'Teilen-Menü erschien ✓ (abgebrochen)' : 'Teilen ❌ ' + e.message; } }
+      document.getElementById('misc-erg').textContent = r;
+      setze('Teilen', r);
+    };
+    document.getElementById('t-bericht').onclick = async () => {
+      toast((await copyText(document.getElementById('bericht').textContent)) ? 'Bericht kopiert.' : 'Kopieren fehlgeschlagen – bitte markieren.');
+    };
+  </script>
+</body>
+</html>

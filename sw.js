@@ -1,0 +1,37 @@
+// Service Worker: App offline verfügbar machen.
+// Bei jeder Änderung an App-Dateien VERSION erhöhen.
+const VERSION = 'vs-1.0.0';
+const DATEIEN = [
+  './', 'index.html', 'diagnose.html', 'manifest.webmanifest',
+  'css/app.css',
+  'js/app.js', 'js/db.js', 'js/util.js', 'js/faecher.js', 'js/import.js',
+  'js/prompt.js', 'js/backup.js', 'js/speech.js', 'js/views.js', 'js/import-view.js',
+  'demo/demo-englisch.json', 'demo/demo-latein.json',
+  'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
+];
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(DATEIEN)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+// Netz zuerst (damit Updates ankommen), bei Offline aus dem Cache.
+self.addEventListener('fetch', (e) => {
+  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  e.respondWith(
+    fetch(e.request)
+      .then((res) => {
+        const kopie = res.clone();
+        caches.open(VERSION).then((c) => c.put(e.request, kopie));
+        return res;
+      })
+      .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('index.html')))
+  );
+});

@@ -126,6 +126,8 @@ export async function homeView(_p, ctx) {
   const lehrwerke = new Map((await db.all('lehrwerke')).map((l) => [l.id, l]));
   const zuletzt = units.sort((a, b) => (b.geaendertAm || '').localeCompare(a.geaendertAm || '')).slice(0, 3);
   const [{ faelligePaare, tageBis, heute: heuteIso }, { naechsterTermin }, { hole }] = await Promise.all([import('./lernen.js'), import('./plan-views.js'), import('./belohnung.js')]);
+  const { erinnerungFaellig } = await import('./sicherung.js');
+  const erinnerung = await erinnerungFaellig();
   const [fp, termin, bel] = await Promise.all([voks.length ? faelligePaare(ctx.profil) : { faellig: [] }, naechsterTermin(ctx.profil.id), hole(ctx.profil.id)]);
   const tb = termin ? tageBis(termin.datum) : 0;
   const heuteInfo = {
@@ -139,6 +141,7 @@ export async function homeView(_p, ctx) {
   const html = `
     <h2 style="margin-top:4px">Hallo ${esc(ctx.profil.name)}! ${esc(ctx.profil.avatar)}</h2>
     <p class="muted">${plural(units.length, 'Unit', 'Units')} · ${plural(voks.length, 'Vokabel', 'Vokabeln')} auf diesem Gerät</p>
+    ${erinnerung ? `<a class="msg warn" href="#/backup" style="display:block;text-decoration:none">💾 ${erinnerung.seit === null ? 'Du hast noch nie gesichert.' : `Letzte Sicherung vor ${erinnerung.seit} Tagen.`} <strong>Jetzt sichern ›</strong></a>` : ''}
     ${voks.length ? `<div class="card heute">
       <div class="check-head"><strong class="grow">Heute</strong>${heuteInfo.serie ? `<span class="badge warn">🔥 ${heuteInfo.serie}</span>` : ''}</div>
       <p style="margin:6px 0">${heuteInfo.faellig ? `<strong>${heuteInfo.faellig}</strong> Vokabeln sind fällig.` : heuteInfo.neu ? `Nichts fällig. <strong>${heuteInfo.neu}</strong> Vokabeln hast du noch nie geübt.` : 'Nichts fällig – super! 🎉'}</p>
@@ -528,23 +531,64 @@ export async function vokabelFormView({ id }, ctx) {
 
 // ---------- Backup ----------
 
+const ANBIETER = [
+  { id: 'icloud', icon: '☁️', name: 'iCloud Drive', schritte: 'Sichern › im Teilen-Menü „In Dateien sichern“ › „iCloud Drive“ wählen › Sichern.' },
+  { id: 'onedrive', icon: '🟦', name: 'OneDrive', schritte: 'OneDrive-App installieren und anmelden. Einmalig: Dateien-App › Durchsuchen › ⋯ › Bearbeiten › „OneDrive“ einschalten. Dann: Sichern › „In Dateien sichern“ › OneDrive wählen.' },
+  { id: 'dropbox', icon: '📦', name: 'Dropbox', schritte: 'Dropbox-App installieren und anmelden. Einmalig in der Dateien-App unter Durchsuchen › Bearbeiten „Dropbox“ einschalten. Dann: Sichern › „In Dateien sichern“ › Dropbox wählen.' },
+  { id: 'gdrive', icon: '🟩', name: 'Google Drive', schritte: 'Google-Drive-App installieren und anmelden, in der Dateien-App einschalten. Dann: Sichern › „In Dateien sichern“ › Google Drive wählen.' },
+  { id: 'android', icon: '🤖', name: 'Android', schritte: 'Sichern › im Teilen-Menü die Drive-, OneDrive- oder Dropbox-App wählen – oder „Speichern unter“ und einen Ordner aussuchen.' },
+  { id: 'claude', icon: '✳️', name: 'Claude', schritte: 'Sichern › im Teilen-Menü die Claude-App wählen (falls sie dort erscheint) – oder die gespeicherte Datei in einem Claude-Projekt unter „Projektwissen“ hochladen. Eine direkte Verbindung zu Claude gibt es nicht; zum Zurückholen die Datei aus Claude herunterladen und hier laden.' }
+];
+
 export async function backupView(_p, ctx) {
   if (brauchtProfil(ctx)) return null;
-  const letzte = await db.getMeta('letztesBackup');
+  const S = await import('./sicherung.js');
+  const [letzte, art, ordner, auto, erinnerung] = await Promise.all([
+    S.letzteSicherung(), db.getMeta('letztesBackupArt'), S.ordner(), db.getMeta('autoSicherung', false), db.getMeta('erinnerungTage', 7)
+  ]);
+  const seit = letzte ? Math.floor((Date.now() - new Date(letzte).getTime()) / 86400000) : null;
+  const artText = { ordner: 'in den Sicherungsordner', geteilt: 'über Teilen', heruntergeladen: 'als Download' }[art] || '';
+  const mobil = isIOS() || /Android/i.test(navigator.userAgent);
   const html = `
     <div class="card">
       <h3 style="margin-top:0">💾 Sicherung erstellen</h3>
-      <p>Alle Bücher, Vokabeln, Profile und Lernstände kommen in <strong>eine Datei</strong>. Speichere sie z. B. in „Dateien“ oder iCloud Drive.</p>
-      <p class="muted small">Letzte Sicherung: ${letzte ? datum(letzte) : 'noch nie'}</p>
-      <button class="btn block" id="bk-export">Sicherung erstellen</button>
+      <p>Alle Bücher, Vokabeln, Profile und Lernstände kommen in <strong>eine Datei</strong>.</p>
+      <p class="small ${seit === null || seit >= (erinnerung || 999) ? 'msg warn' : 'muted'}">Letzte Sicherung: ${letzte ? `${datum(letzte)}${seit ? ` (vor ${plural(seit, 'Tag', 'Tagen')})` : ' (heute)'} ${artText}` : 'noch nie'}</p>
+      <button class="btn block" id="bk-export">${mobil ? '📤 Sichern … (Teilen-Menü)' : '⬇️ Sicherung herunterladen'}</button>
+      ${ordner ? '<button class="btn soft block" id="bk-ordner-jetzt" style="margin-top:10px">📁 In Sicherungsordner speichern</button>' : ''}
     </div>
+
+    <h3>Wohin speichern?</h3>
+    <div class="card" style="padding:4px 14px">
+      ${ANBIETER.map((a) => `<details class="anbieter"><summary>${a.icon} ${esc(a.name)}</summary><p class="small">${esc(a.schritte)}</p></details>`).join('')}
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">📁 Sicherungsordner ${S.ORDNER_MOEGLICH ? '' : '<span class="badge">nur PC/Mac</span>'}</h3>
+      ${S.ORDNER_MOEGLICH ? `
+        <p class="small">Wähle einmal einen Ordner – am besten deinen <strong>OneDrive-, Dropbox-, Google-Drive- oder iCloud-Ordner</strong> auf dem Computer. Die App legt dort Sicherungen ab und behält die letzten 10.</p>
+        ${ordner ? `<p class="msg ok small">Ordner: <strong>${esc(ordner.name)}</strong></p>
+          <label class="switch"><input type="checkbox" id="bk-auto" ${auto ? 'checked' : ''}> Automatisch sichern (1× täglich nach dem Lernen)</label>
+          <div class="btn-row"><button class="btn secondary" id="bk-ordner">Anderen Ordner wählen</button><button class="btn secondary" id="bk-ordner-weg">Ordner entfernen</button></div>`
+        : '<button class="btn secondary block" id="bk-ordner">Ordner wählen …</button>'}`
+      : `<p class="small muted">Auf iPhone, iPad und Android erlaubt der Browser keinen festen Ordner. Nutze dort „Sichern …“ und wähle im Teilen-Menü „In Dateien sichern“ bzw. deinen Cloud-Dienst. Die App erinnert dich regelmäßig.</p>`}
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">⏰ Erinnerung</h3>
+      <label for="bk-erinnerung">Erinnern, wenn die letzte Sicherung älter ist als</label>
+      <select id="bk-erinnerung">${[[0, 'nie erinnern'], [3, '3 Tage'], [7, '7 Tage'], [14, '14 Tage'], [30, '30 Tage']].map(([v, t]) => `<option value="${v}" ${v === erinnerung ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    </div>
+
     <div class="card">
       <h3 style="margin-top:0">📂 Sicherung laden</h3>
-      <p>Lädt eine Sicherungsdatei – auch von einem anderen Gerät. Vorhandene Daten bleiben erhalten, gleiche Einträge werden aktualisiert.</p>
-      <label class="btn secondary block" for="bk-file">Datei auswählen</label>
+      <p class="small">Lädt eine Sicherung – auch von einem anderen Gerät oder aus OneDrive, Dropbox, Google Drive, iCloud oder Claude (vorher dort herunterladen). Vorhandene Daten bleiben erhalten, gleiche Einträge werden aktualisiert.</p>
+      <label class="btn secondary block" for="bk-file">Datei auswählen …</label>
       <input id="bk-file" type="file" accept=".json,application/json" hidden>
+      ${ordner ? '<button class="btn secondary block" id="bk-aus-ordner" style="margin-top:10px">Aus Sicherungsordner laden …</button><div id="bk-liste"></div>' : ''}
       <div id="bk-info"></div>
     </div>
+
     <div class="msg info small">Warum ist das wichtig? Die Daten liegen nur auf diesem Gerät. Wird die App gelöscht oder der Safari-Verlauf geleert, sind sie weg. Außerdem haben Safari und die Home-Bildschirm-App getrennte Speicher – mit einer Sicherung kannst du umziehen.</div>
     <details class="card"><summary>Gefahrenzone</summary>
       <p>Löscht alle Daten auf diesem Gerät.</p>
@@ -553,27 +597,46 @@ export async function backupView(_p, ctx) {
   return {
     title: 'Sicherung', back: 'home', html,
     bind(root) {
+      const fehler = (e) => { if (e?.name !== 'AbortError') toast('Hat nicht geklappt: ' + (e?.message || e)); };
       $('#bk-export', root).onclick = async () => {
-        const data = await backup.erstelleBackup();
-        const r = await backup.speichereDatei(backup.backupDateiname(), JSON.stringify(data));
-        if (r !== 'abgebrochen') { await db.setMeta('letztesBackup', new Date().toISOString()); toast('Sicherung erstellt.'); ctx.rerender(); }
+        try { const r = await S.sichereAlsDatei(); if (r !== 'abgebrochen') { toast('Sicherung erstellt.'); ctx.rerender(); } } catch (e) { fehler(e); }
       };
-      $('#bk-file', root).onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+      const jetzt = $('#bk-ordner-jetzt', root);
+      if (jetzt) jetzt.onclick = async () => {
+        try { const r = await S.sichereInOrdner(); toast(r.ok ? `Gespeichert in „${r.ordner}“ ✓` : r.grund); ctx.rerender(); } catch (e) { fehler(e); }
+      };
+      const wahl = $('#bk-ordner', root);
+      if (wahl) wahl.onclick = async () => {
+        try { await S.waehleOrdner(); const r = await S.sichereInOrdner(); toast(r.ok ? 'Ordner gewählt, erste Sicherung gespeichert ✓' : r.grund); ctx.rerender(); } catch (e) { fehler(e); }
+      };
+      const weg = $('#bk-ordner-weg', root);
+      if (weg) weg.onclick = async () => { await S.entferneOrdner(); ctx.rerender(); };
+      const au = $('#bk-auto', root);
+      if (au) au.onchange = async () => { await db.setMeta('autoSicherung', au.checked); toast(au.checked ? 'Automatische Sicherung an.' : 'Automatische Sicherung aus.'); };
+      $('#bk-erinnerung', root).onchange = async (e) => { await db.setMeta('erinnerungTage', +e.target.value); toast('Gespeichert.'); };
+
+      const zeigeLaden = (obj) => {
         const info = $('#bk-info', root);
-        let obj;
-        try { obj = JSON.parse(await file.text()); } catch { info.innerHTML = '<div class="msg err">Die Datei ist beschädigt oder keine JSON-Datei.</div>'; return; }
         const err = backup.pruefeBackup(obj);
         if (err) { info.innerHTML = `<div class="msg err">${esc(err)}${obj?.schema ? '<br>Das sieht nach einer Chatbot-Antwort aus – die gehört in „Vokabelseite einlesen“.' : ''}</div>`; return; }
         const z = backup.zusammenfassung(obj);
         info.innerHTML = `<div class="msg info">Sicherung vom ${esc(datum(z.datum))}: ${z.profile} Profile, ${z.units} Units, ${z.vokabeln} Vokabeln.</div>
           <button class="btn block" id="bk-go">Jetzt laden</button>`;
-        $('#bk-go', root).onclick = async () => {
-          const n = await backup.spieleEin(obj);
-          toast(`${n} Einträge geladen.`);
-          ctx.go('home');
-        };
+        $('#bk-go', root).onclick = async () => { const n = await backup.spieleEin(obj); toast(`${n} Einträge geladen.`); ctx.go('home'); };
+        info.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      };
+      const lese = async (file) => {
+        try { zeigeLaden(JSON.parse(await file.text())); }
+        catch { $('#bk-info', root).innerHTML = '<div class="msg err">Die Datei ist beschädigt oder keine JSON-Datei.</div>'; }
+      };
+      $('#bk-file', root).onchange = (e) => { if (e.target.files[0]) lese(e.target.files[0]); };
+      const ausOrdner = $('#bk-aus-ordner', root);
+      if (ausOrdner) ausOrdner.onclick = async () => {
+        try {
+          const liste = await S.sicherungenImOrdner();
+          $('#bk-liste', root).innerHTML = liste.length ? liste.map((x, i) => `<button class="btn secondary block" data-i="${i}" style="margin-top:6px">${esc(x.name)}</button>`).join('') : '<p class="muted small">Keine Sicherungen im Ordner.</p>';
+          $$('#bk-liste [data-i]', root).forEach((b) => b.onclick = async () => lese(await liste[+b.dataset.i].handle.getFile()));
+        } catch (e) { fehler(e); }
       };
       $('#bk-wipe', root).onclick = async () => {
         if (!confirm('Wirklich ALLE Daten auf diesem Gerät löschen? Erstelle vorher eine Sicherung!')) return;

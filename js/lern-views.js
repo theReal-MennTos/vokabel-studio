@@ -524,6 +524,7 @@ async function endeView(ctx) {
     S.punkte += res.punkte;
     S.neueAbzeichen.push(...res.neueAbzeichen);
     if (S.cfg.terminRef) await markiereTerminAufgabe(S.cfg.terminRef);
+    import('./sicherung.js').then((m) => m.autoSicherung()).then((r) => { if (r?.ok) toast('💾 Automatisch gesichert'); }).catch(() => {});
     S.ende = { richtig, gesamt: gewertet.length, prozent, schwach };
   }
   const E = S.ende;

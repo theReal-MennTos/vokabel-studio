@@ -239,3 +239,7 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 44px; display
   .seitenumbruch { page-break-after: always; break-after: page; height: 0; }
   .testtab td { border-color: #bbb; }
 }
+
+.anbieter { border-bottom: 1px solid var(--line); }
+.anbieter:last-child { border-bottom: 0; }
+.anbieter p { margin: 0 0 12px; }

@@ -1,6 +1,8 @@
 // Service Worker: App offline verfügbar machen.
 // Bei jeder Änderung an App-Dateien VERSION erhöhen.
-const VERSION = 'vs-1.0.1';
+// Cache-Name enthält den Pfad, damit Live- und Beta-Version sich nicht gegenseitig löschen
+const PREFIX = 'vs-' + new URL(self.registration.scope).pathname + '-';
+const VERSION = PREFIX + '1.0.2';
 const DATEIEN = [
   './', 'index.html', 'diagnose.html', 'manifest.webmanifest',
   'css/app.css',
@@ -17,7 +19,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => (k.startsWith(PREFIX) && k !== VERSION) || /^vs-\d/.test(k)).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -25,8 +27,9 @@ self.addEventListener('activate', (e) => {
 // Netz zuerst (damit Updates ankommen), bei Offline aus dem Cache.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  // cache: 'no-cache' = beim Server nachfragen, ob es eine neuere Datei gibt
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' })
       .then((res) => {
         const kopie = res.clone();
         caches.open(VERSION).then((c) => c.put(e.request, kopie));

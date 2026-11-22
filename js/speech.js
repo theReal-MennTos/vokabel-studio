@@ -49,66 +49,118 @@ export async function sprich(text, lang, { rate = 0.9 } = {}) {
 }
 
 // Spracheingabe: liefert {ok, text, alternativen, grund}
-// iOS-Safari liefert Ergebnisse oft erst beim Stoppen und beendet nicht immer selbst.
-// Deshalb: Zwischenergebnisse sammeln, nach Stille selbst stoppen, Ergebnis nach dem Stopp noch annehmen.
-// Zeitlimit läuft erst ab dem tatsächlichen Start (nach der Mikrofon-Erlaubnis).
-// Rückgabe: Promise mit {ok, text, alternativen, grund}; zusätzlich .stop() für einen Stopp-Knopf.
-export function hoere(lang, { maxMs = 10000, stilleMs = 1400, startMs = 15000, onZwischen } = {}) {
+// iOS-Safari-Eigenheiten (aus Gerätetests):
+// - liefert Ergebnisse oft erst beim Stoppen und beendet nicht immer selbst → nach Stille selbst stoppen
+// - im Dauer-Modus kommt jedes Zwischenergebnis komplett erneut („Mountain Mountain“) → zusammenführen, auf iOS kein Dauer-Modus
+// - direkt nach Vorlesen oder einem vorigen Versuch ist das Mikrofon kurz belegt → Vorlesen stoppen, alte Erkennung abbrechen, kurz warten, einmal neu versuchen
+// Rückgabe: Promise mit {ok, text, alternativen, grund, protokoll}; zusätzlich .stop() für einen Stopp-Knopf.
+const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let aktiv = null;          // laufende Erkennung
+let letztesEnde = 0;       // Zeitpunkt, an dem die letzte Erkennung endete
+const PAUSE_MS = 600;
+
+function fuehreZusammen(results) {
+  // Chrome: Ergebnisse sind Teilstücke → aneinanderhängen. iOS: oft Wiederholungen → nur Neues anhängen.
+  let text = '';
+  for (const res of results) {
+    const t = res[0].transcript.trim();
+    if (!t) continue;
+    const a = text.toLowerCase(), b = t.toLowerCase();
+    if (!text || b.startsWith(a)) text = t;
+    else if (!a.includes(b)) text += ' ' + t;
+  }
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+export function hoere(lang, opts = {}) {
   const K = sttKlasse();
   if (!K) {
-    const p = Promise.resolve({ ok: false, grund: 'Spracheingabe wird von diesem Browser nicht unterstützt.' });
+    const p = Promise.resolve({ ok: false, grund: 'Spracheingabe wird von diesem Browser nicht unterstützt.', protokoll: [] });
     p.stop = () => {};
     return p;
   }
-  const r = new K();
-  let stoppe = () => {};
-  const p = new Promise((resolve) => {
-    let fertig = false, gestoppt = false, gehoert = false, text = '', alternativen = [], fehler = null;
+  let stopRef = { stop: () => {} };
+  const p = (async () => {
+    if (ttsVerfuegbar()) speechSynthesis.cancel();
+    if (aktiv) { try { aktiv.abort(); } catch { /* egal */ } aktiv = null; await warte(PAUSE_MS); }
+    const seitEnde = Date.now() - letztesEnde;
+    if (seitEnde < PAUSE_MS) await warte(PAUSE_MS - seitEnde);
+    let r = await versuch(K, lang, opts, stopRef);
+    // Sofort-Abbruch (Mikrofon belegt) → einmal neu versuchen
+    if (!r.ok && r.sofort && !r.gestopptVonHand) {
+      r.protokoll.push('→ zweiter Versuch');
+      await warte(800);
+      const r2 = await versuch(K, lang, opts, stopRef);
+      r2.protokoll = [...r.protokoll, ...r2.protokoll];
+      r = r2;
+    }
+    return r;
+  })();
+  p.stop = () => stopRef.stop();
+  return p;
+}
+
+const warte = (ms) => new Promise((res) => setTimeout(res, ms));
+
+function versuch(K, lang, { maxMs = 10000, stilleMs = 1400, startMs = 15000, onZwischen } = {}, stopRef) {
+  return new Promise((resolve) => {
+    const r = new K();
+    aktiv = r;
+    const t0 = Date.now();
+    const protokoll = [];
+    const log = (x) => protokoll.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${x}`);
+    let fertig = false, gestoppt = false, vonHand = false, gestartet = false, gehoert = false, text = '', alternativen = [], fehler = null;
     const timer = {};
     const clear = () => Object.values(timer).forEach(clearTimeout);
     const ende = () => {
       if (fertig) return;
       fertig = true; clear();
-      text = text.trim();
-      if (text) resolve({ ok: true, text, alternativen: alternativen.length ? alternativen : [text] });
-      else resolve({ ok: false, grund: fehler || (gehoert ? 'Nichts verstanden. Versuch es noch einmal oder tippe die Antwort.' : 'Nichts gehört. Sprich direkt nach dem Tippen, etwas lauter.') });
+      if (aktiv === r) aktiv = null;
+      letztesEnde = Date.now();
+      log('ende');
+      const sofort = Date.now() - t0 < 1500 && !gehoert;
+      if (text) resolve({ ok: true, text, alternativen: alternativen.length ? alternativen : [text], protokoll });
+      else resolve({ ok: false, sofort, gestopptVonHand: vonHand, protokoll,
+        grund: fehler || (gehoert ? 'Nichts verstanden. Versuch es noch einmal oder tippe die Antwort.'
+          : sofort ? 'Das Mikrofon war gerade belegt. Bitte noch einmal tippen.' : 'Nichts gehört. Sprich direkt nach dem Tippen, etwas lauter.') });
     };
-    stoppe = () => {
+    const stoppe = (grund) => {
       if (gestoppt) return;
       gestoppt = true;
+      log('stop (' + grund + ')');
       try { r.stop(); } catch { /* egal */ }
       timer.nachlauf = setTimeout(ende, 1500);   // falls onend ausbleibt
     };
+    stopRef.stop = () => { vonHand = true; stoppe('Knopf'); };
     r.lang = lang;
     r.interimResults = true;
-    r.continuous = true;
+    r.continuous = !IOS;
     r.maxAlternatives = 3;
-    r.onstart = () => {
-      clearTimeout(timer.start);
-      timer.max = setTimeout(stoppe, maxMs);
-    };
-    r.onspeechstart = () => { gehoert = true; };
+    r.onstart = () => { gestartet = true; log('start'); clearTimeout(timer.start); timer.max = setTimeout(() => stoppe('Zeit'), maxMs); };
+    r.onaudiostart = () => log('mikro an');
+    r.onspeechstart = () => { gehoert = true; log('sprache erkannt'); };
     r.onresult = (e) => {
       gehoert = true;
-      text = [...e.results].map((res) => res[0].transcript).join(' ').replace(/\s+/g, ' ');
+      text = fuehreZusammen(e.results);
       const letzte = e.results[e.results.length - 1];
       if (e.results.length === 1) alternativen = [...letzte].map((a) => a.transcript.trim()).filter(Boolean);
-      onZwischen?.(text.trim());
+      log(`ergebnis „${text}“${letzte.isFinal ? ' (final)' : ''}`);
+      onZwischen?.(text);
       clearTimeout(timer.stille);
-      timer.stille = setTimeout(stoppe, stilleMs);
+      timer.stille = setTimeout(() => stoppe('Stille'), stilleMs);
     };
     r.onerror = (e) => {
+      log('fehler ' + e.error);
       if (e.error === 'aborted' && gestoppt) return;
       if (e.error === 'no-speech' && text) return;
       fehler = sttFehlertext(e.error);
-      stoppe();
+      stoppe('Fehler');
     };
     r.onend = ende;
-    timer.start = setTimeout(() => { fehler = 'Das Mikrofon ist nicht gestartet. Erlaubnis prüfen und noch einmal tippen.'; stoppe(); }, startMs);
-    try { r.start(); } catch (e) { fehler = 'Mikrofon konnte nicht gestartet werden: ' + e.message; ende(); }
+    timer.start = setTimeout(() => { if (!gestartet) { fehler = 'Das Mikrofon ist nicht gestartet. Erlaubnis prüfen und noch einmal tippen.'; stoppe('kein Start'); } }, startMs);
+    try { r.start(); log('start angefordert (' + lang + ', ' + (r.continuous ? 'dauer' : 'einzel') + ')'); }
+    catch (e) { fehler = 'Mikrofon konnte nicht gestartet werden: ' + e.message; log('start-fehler ' + e.message); ende(); }
   });
-  p.stop = () => stoppe();
-  return p;
 }
 
 function sttFehlertext(code) {
@@ -116,7 +168,7 @@ function sttFehlertext(code) {
     'not-allowed': 'Kein Zugriff aufs Mikrofon. Erlaube es in den Einstellungen (iPhone: Einstellungen › Safari › Mikrofon) und prüfe, ob Siri & Diktieren eingeschaltet sind.',
     'service-not-allowed': 'Spracherkennung ist nicht erlaubt. Auf dem iPhone muss „Diktierfunktion“ eingeschaltet sein (Einstellungen › Allgemein › Tastatur).',
     'no-speech': 'Nichts gehört. Sprich etwas lauter oder näher am Gerät.',
-    'audio-capture': 'Kein Mikrofon gefunden.',
+    'audio-capture': 'Das Mikrofon ist gerade belegt oder nicht verfügbar. Kurz warten und noch einmal tippen.',
     'network': 'Keine Internetverbindung – die Spracherkennung braucht Internet.',
     'language-not-supported': 'Diese Sprache kann die Spracherkennung nicht.',
     'aborted': 'Abgebrochen.'

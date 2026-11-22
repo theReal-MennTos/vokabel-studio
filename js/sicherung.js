@@ -28,7 +28,45 @@ export async function ordner() { return ORDNER_MOEGLICH ? db.getMeta('sicherungs
 export async function waehleOrdner() {
   const handle = await window.showDirectoryPicker({ id: 'vokabel-studio', mode: 'readwrite', startIn: 'documents' });
   await db.setMeta('sicherungsOrdner', handle);
+  await db.setMeta('sicherungsOrdnerSeit', new Date().toISOString());
   return handle;
+}
+
+// Fingerabdruck des Datenstands (ohne Zeitstempel des Exports) → zeigt, ob eine Datei den aktuellen Stand enthält
+export async function fingerabdruck(obj) {
+  const text = JSON.stringify({ i: obj.inhalte, p: obj.profile, l: obj.lerndaten });
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Status des Sicherungsordners.
+ * art: keinOrdner | keinZugriff | leer | synchron | veraltet | fehler
+ * fragen=true nur aus einem Klick heraus (Browser verlangt eine Nutzeraktion für die Zugriffsfrage).
+ */
+export async function ordnerStatus({ fragen = false } = {}) {
+  const handle = await ordner();
+  if (!handle) return { art: 'keinOrdner' };
+  const seit = await db.getMeta('sicherungsOrdnerSeit');
+  const basis = { name: handle.name, seit };
+  try {
+    if (!(await erlaubnis(handle, fragen))) return { ...basis, art: 'keinZugriff' };
+    const dateien = [];
+    for await (const [name, h] of handle.entries()) {
+      if (h.kind !== 'file' || !/^vokabel-studio-backup-.*\.json$/.test(name)) continue;
+      const f = await h.getFile();
+      dateien.push({ name, groesse: f.size, geaendert: f.lastModified, file: f });
+    }
+    dateien.sort((a, b) => b.geaendert - a.geaendert);
+    if (!dateien.length) return { ...basis, art: 'leer', dateien };
+    const neueste = dateien[0];
+    let inhalt;
+    try { inhalt = JSON.parse(await neueste.file.text()); } catch { return { ...basis, art: 'fehler', grund: `Die Datei „${neueste.name}“ ist beschädigt.`, dateien }; }
+    const [fpDatei, fpJetzt] = await Promise.all([fingerabdruck(inhalt), erstelleBackup().then(fingerabdruck)]);
+    return { ...basis, art: fpDatei === fpJetzt ? 'synchron' : 'veraltet', dateien, neueste: { name: neueste.name, geaendert: neueste.geaendert, exportiertAm: inhalt.exportiertAm, groesse: neueste.groesse } };
+  } catch (e) {
+    return { ...basis, art: 'fehler', grund: e.message || String(e) };
+  }
 }
 
 export async function entferneOrdner() { await db.del('meta', 'sicherungsOrdner'); await db.setMeta('autoSicherung', false); }

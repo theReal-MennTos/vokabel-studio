@@ -567,7 +567,7 @@ export async function backupView(_p, ctx) {
       <h3 style="margin-top:0">📁 Sicherungsordner ${S.ORDNER_MOEGLICH ? '' : '<span class="badge">nur PC/Mac</span>'}</h3>
       ${S.ORDNER_MOEGLICH ? `
         <p class="small">Wähle einmal einen Ordner – am besten deinen <strong>OneDrive-, Dropbox-, Google-Drive- oder iCloud-Ordner</strong> auf dem Computer. Die App legt dort Sicherungen ab und behält die letzten 10.</p>
-        ${ordner ? `<p class="msg ok small">Ordner: <strong>${esc(ordner.name)}</strong></p>
+        ${ordner ? `<div id="bk-status"><p class="muted small">Prüfe Sicherungsordner …</p></div>
           <label class="switch"><input type="checkbox" id="bk-auto" ${auto ? 'checked' : ''}> Automatisch sichern (1× täglich nach dem Lernen)</label>
           <div class="btn-row"><button class="btn secondary" id="bk-ordner">Anderen Ordner wählen</button><button class="btn secondary" id="bk-ordner-weg">Ordner entfernen</button></div>`
         : '<button class="btn secondary block" id="bk-ordner">Ordner wählen …</button>'}`
@@ -598,12 +598,54 @@ export async function backupView(_p, ctx) {
     title: 'Sicherung', back: 'home', html,
     bind(root) {
       const fehler = (e) => { if (e?.name !== 'AbortError') toast('Hat nicht geklappt: ' + (e?.message || e)); };
+
+      // ----- Status des Sicherungsordners -----
+      const zeit = (t) => new Date(t).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const kb = (b) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
+      const STATUS = {
+        synchron: ['ok', '✓ Synchron', 'Die neueste Sicherung im Ordner enthält genau den aktuellen Stand der App.'],
+        veraltet: ['warn', '⚠ Nicht aktuell', 'Seit der neuesten Sicherung im Ordner hat sich in der App etwas geändert (gelernt, eingelesen oder bearbeitet).'],
+        leer: ['warn', '⚠ Noch keine Sicherung', 'Im Ordner liegt noch keine Vokabel-Studio-Sicherung.'],
+        keinZugriff: ['info', '🔒 Zugriff nötig', 'Der Browser fragt nach jedem Neustart einmal, ob die App den Ordner benutzen darf.'],
+        fehler: ['err', '✗ Problem', '']
+      };
+      const zeigeStatus = async (fragen = false) => {
+        const box = $('#bk-status', root);
+        if (!box) return;
+        const st = await S.ordnerStatus({ fragen });
+        const [kl, titel, text] = STATUS[st.art] || STATUS.fehler;
+        box.innerHTML = `
+          <div class="ordner-kopf"><span class="ordner-icon">📁</span><span class="grow"><strong>${esc(st.name || '')}</strong>
+            ${st.seit ? `<br><span class="muted small">gewählt am ${esc(datum(st.seit))}</span>` : ''}</span></div>
+          <div class="msg ${kl} small"><strong>${titel}</strong><br>${esc(st.grund || text)}
+            ${st.neueste ? `<br>Neueste Sicherung: <strong>${esc(zeit(st.neueste.geaendert))}</strong> · ${kb(st.neueste.groesse)}` : ''}</div>
+          <div class="btn-row">
+            ${st.art === 'keinZugriff' ? '<button class="btn" id="bk-zugriff">Zugriff erlauben</button>' : ''}
+            ${st.art === 'veraltet' || st.art === 'leer' ? '<button class="btn" id="bk-sync">Jetzt synchronisieren</button>' : ''}
+            ${st.art !== 'keinZugriff' ? '<button class="btn secondary" id="bk-pruefen">Neu prüfen</button>' : ''}
+          </div>
+          ${st.dateien?.length ? `<details><summary>${plural(st.dateien.length, 'Sicherung', 'Sicherungen')} im Ordner</summary>
+            <ul class="small">${st.dateien.map((d) => `<li>${esc(d.name)} – ${esc(zeit(d.geaendert))}, ${kb(d.groesse)}</li>`).join('')}</ul></details>` : ''}
+          <p class="muted small">Der Browser zeigt nur den Ordnernamen, nicht den vollständigen Pfad. Ob OneDrive/Dropbox die Datei schon hochgeladen hat, siehst du im Programm des Cloud-Dienstes (Symbol in der Taskleiste bzw. Menüleiste).</p>`;
+        const z = $('#bk-zugriff', root);
+        if (z) z.onclick = () => zeigeStatus(true);
+        const s = $('#bk-sync', root);
+        if (s) s.onclick = async () => {
+          s.disabled = true; s.textContent = 'Speichere …';
+          try { const r = await S.sichereInOrdner(); toast(r.ok ? 'Synchronisiert ✓' : r.grund); } catch (e) { fehler(e); }
+          zeigeStatus();
+        };
+        const p = $('#bk-pruefen', root);
+        if (p) p.onclick = () => zeigeStatus();
+      };
+      zeigeStatus();
       $('#bk-export', root).onclick = async () => {
         try { const r = await S.sichereAlsDatei(); if (r !== 'abgebrochen') { toast('Sicherung erstellt.'); ctx.rerender(); } } catch (e) { fehler(e); }
       };
       const jetzt = $('#bk-ordner-jetzt', root);
       if (jetzt) jetzt.onclick = async () => {
-        try { const r = await S.sichereInOrdner(); toast(r.ok ? `Gespeichert in „${r.ordner}“ ✓` : r.grund); ctx.rerender(); } catch (e) { fehler(e); }
+        try { const r = await S.sichereInOrdner(); toast(r.ok ? `Gespeichert in „${r.ordner}“ ✓` : r.grund); } catch (e) { fehler(e); }
+        zeigeStatus();
       };
       const wahl = $('#bk-ordner', root);
       if (wahl) wahl.onclick = async () => {

@@ -243,3 +243,6 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 44px; display
 .anbieter { border-bottom: 1px solid var(--line); }
 .anbieter:last-child { border-bottom: 0; }
 .anbieter p { margin: 0 0 12px; }
+.ordner-kopf { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.ordner-kopf .grow { flex: 1; min-width: 0; word-break: break-word; }
+.ordner-icon { font-size: 34px; }

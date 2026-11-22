@@ -45,7 +45,7 @@
         <button class="btn soft" data-stt="en-GB">Englisch sprechen</button>
         <button class="btn soft" data-stt="de-DE">Deutsch sprechen</button>
       </div>
-      <p class="small muted">Nach dem Tippen z. B. „mountain“ bzw. „Berg“ sagen.</p>
+      <p class="small muted">Nach dem Tippen z. B. „mountain“ bzw. „Berg“ sagen. Die App stoppt nach kurzer Stille selbst – oder nochmal tippen. Gern 2–3 Mal pro Sprache probieren.</p>
       <div class="ergebnis small" id="stt-erg"></div>
     </div>
 
@@ -77,9 +77,13 @@
 
     const ua = navigator.userAgent;
     const iosVer = (/OS (\d+)_(\d+)/.exec(ua) || []).slice(1).join('.');
+    const safariVer = /Version\/([\d.]+)/.exec(ua)?.[1];
+    const kurzeSeite = Math.min(screen.width, screen.height);
     const g = {
-      'Gerät': isIOS() ? (/iPad/.test(ua) || navigator.maxTouchPoints > 1 && /Mac/.test(ua) ? 'iPad' : 'iPhone') : (navigator.platform || '?'),
-      'iOS-Version': iosVer || (/Version\/([\d.]+)/.exec(ua)?.[1] ? 'Safari ' + /Version\/([\d.]+)/.exec(ua)[1] : '–'),
+      // UA ist unzuverlässig (iPad kann als iPhone oder Mac auftreten) → Bildschirmgröße entscheidet
+      'Gerät': isIOS() ? `${kurzeSeite >= 700 ? 'iPad' : 'iPhone'} (${screen.width}×${screen.height})` : (navigator.platform || '?'),
+      'iOS laut Browser': iosVer ? iosVer + ' (ab iOS 26 meldet Safari hier fest 18.x)' : '–',
+      'Safari-Version': safariVer || '–',
       'Modus': isStandalone() ? 'Home-Bildschirm-App' : 'Browser-Tab',
       'Vorlesen vorhanden': ttsVerfuegbar() ? 'ja' : 'nein',
       'Spracheingabe vorhanden': sttKlasse() ? 'ja' : 'nein',
@@ -93,7 +97,7 @@
 
     stimmen().then((v) => {
       const zaehl = (p) => v.filter((x) => x.lang.toLowerCase().startsWith(p));
-      const liste = (p) => zaehl(p).map((x) => `${x.name} (${x.lang})`).join(', ') || 'keine';
+      const liste = (p) => [...new Set(zaehl(p).map((x) => `${x.name} (${x.lang})`))].join(', ') || 'keine';
       document.getElementById('stimmen').innerHTML =
         `Stimmen insgesamt: ${v.length}<br>Englisch: ${esc(liste('en-gb'))}<br>Deutsch: ${esc(liste('de'))}<br>Italienisch: ${esc(liste('it'))}`;
       setze('Stimmen gesamt', v.length);
@@ -114,13 +118,25 @@
       setze('TTS ' + b.dataset.tts, txt);
     });
 
-    document.querySelectorAll('[data-stt]').forEach((b) => b.onclick = async () => {
-      const erg = document.getElementById('stt-erg');
-      erg.textContent = '🎤 Hört zu … jetzt sprechen';
-      const r = await hoere(b.dataset.stt);
-      const txt = r.ok ? `✓ ${b.dataset.stt}: „${r.text}“${r.alternativen.length > 1 ? ' (Alternativen: ' + r.alternativen.slice(1).join(', ') + ')' : ''}` : `❌ ${b.dataset.stt}: ${r.grund}`;
-      erg.textContent = txt;
-      setze('STT ' + b.dataset.stt, txt);
+    let laufend = null;
+    document.querySelectorAll('[data-stt]').forEach((b) => {
+      const label = b.textContent;
+      b.onclick = async () => {
+        if (laufend) { laufend.stop(); return; }   // zweites Tippen = Stopp
+        const erg = document.getElementById('stt-erg');
+        erg.textContent = '🎤 Hört zu … jetzt sprechen (zum Beenden nochmal tippen)';
+        b.textContent = '⏹ Stopp';
+        const t0 = performance.now();
+        laufend = hoere(b.dataset.stt, { onZwischen: (t) => { erg.textContent = '🎤 … ' + t; } });
+        const r = await laufend;
+        laufend = null;
+        b.textContent = label;
+        const s = ((performance.now() - t0) / 1000).toFixed(1);
+        const txt = r.ok ? `✓ ${b.dataset.stt}: „${r.text}“ (${s} s)${r.alternativen.length > 1 ? ' – Alternativen: ' + r.alternativen.slice(1).join(', ') : ''}` : `❌ ${b.dataset.stt}: ${r.grund} (${s} s)`;
+        erg.textContent = txt;
+        const k = 'STT ' + b.dataset.stt;
+        setze(k, B[k] ? B[k] + ' | ' + txt : txt);   // mehrere Versuche sammeln
+      };
     });
 
     document.getElementById('t-speicher').onclick = async () => {

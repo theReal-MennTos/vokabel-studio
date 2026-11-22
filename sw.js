@@ -1,6 +1,6 @@
 // Service Worker: App offline verfügbar machen.
 // Bei jeder Änderung an App-Dateien VERSION erhöhen.
-const VERSION = 'vs-1.0.0';
+const VERSION = 'vs-1.0.1';
 const DATEIEN = [
   './', 'index.html', 'diagnose.html', 'manifest.webmanifest',
   'css/app.css',

@@ -49,27 +49,66 @@ export async function sprich(text, lang, { rate = 0.9 } = {}) {
 }
 
 // Spracheingabe: liefert {ok, text, alternativen, grund}
-export function hoere(lang, { timeoutMs = 8000 } = {}) {
+// iOS-Safari liefert Ergebnisse oft erst beim Stoppen und beendet nicht immer selbst.
+// Deshalb: Zwischenergebnisse sammeln, nach Stille selbst stoppen, Ergebnis nach dem Stopp noch annehmen.
+// Zeitlimit läuft erst ab dem tatsächlichen Start (nach der Mikrofon-Erlaubnis).
+// Rückgabe: Promise mit {ok, text, alternativen, grund}; zusätzlich .stop() für einen Stopp-Knopf.
+export function hoere(lang, { maxMs = 10000, stilleMs = 1400, startMs = 15000, onZwischen } = {}) {
   const K = sttKlasse();
-  if (!K) return Promise.resolve({ ok: false, grund: 'Spracheingabe wird von diesem Browser nicht unterstützt.' });
-  return new Promise((resolve) => {
-    let fertig = false;
-    const r = new K();
-    r.lang = lang;
-    r.interimResults = false;
-    r.maxAlternatives = 3;
-    r.continuous = false;
-    const ende = (x) => { if (!fertig) { fertig = true; try { r.stop(); } catch { /* egal */ } resolve(x); } };
-    r.onresult = (e) => {
-      const res = e.results[0];
-      const alts = [...res].map((a) => a.transcript.trim());
-      ende({ ok: true, text: alts[0] || '', alternativen: alts });
+  if (!K) {
+    const p = Promise.resolve({ ok: false, grund: 'Spracheingabe wird von diesem Browser nicht unterstützt.' });
+    p.stop = () => {};
+    return p;
+  }
+  const r = new K();
+  let stoppe = () => {};
+  const p = new Promise((resolve) => {
+    let fertig = false, gestoppt = false, gehoert = false, text = '', alternativen = [], fehler = null;
+    const timer = {};
+    const clear = () => Object.values(timer).forEach(clearTimeout);
+    const ende = () => {
+      if (fertig) return;
+      fertig = true; clear();
+      text = text.trim();
+      if (text) resolve({ ok: true, text, alternativen: alternativen.length ? alternativen : [text] });
+      else resolve({ ok: false, grund: fehler || (gehoert ? 'Nichts verstanden. Versuch es noch einmal oder tippe die Antwort.' : 'Nichts gehört. Sprich direkt nach dem Tippen, etwas lauter.') });
     };
-    r.onerror = (e) => ende({ ok: false, grund: sttFehlertext(e.error) });
-    r.onend = () => ende({ ok: false, grund: 'Nichts verstanden. Versuch es noch einmal oder tippe die Antwort.' });
-    try { r.start(); } catch (e) { ende({ ok: false, grund: 'Mikrofon konnte nicht gestartet werden: ' + e.message }); }
-    setTimeout(() => ende({ ok: false, grund: 'Zeit abgelaufen – nichts gehört.' }), timeoutMs);
+    stoppe = () => {
+      if (gestoppt) return;
+      gestoppt = true;
+      try { r.stop(); } catch { /* egal */ }
+      timer.nachlauf = setTimeout(ende, 1500);   // falls onend ausbleibt
+    };
+    r.lang = lang;
+    r.interimResults = true;
+    r.continuous = true;
+    r.maxAlternatives = 3;
+    r.onstart = () => {
+      clearTimeout(timer.start);
+      timer.max = setTimeout(stoppe, maxMs);
+    };
+    r.onspeechstart = () => { gehoert = true; };
+    r.onresult = (e) => {
+      gehoert = true;
+      text = [...e.results].map((res) => res[0].transcript).join(' ').replace(/\s+/g, ' ');
+      const letzte = e.results[e.results.length - 1];
+      if (e.results.length === 1) alternativen = [...letzte].map((a) => a.transcript.trim()).filter(Boolean);
+      onZwischen?.(text.trim());
+      clearTimeout(timer.stille);
+      timer.stille = setTimeout(stoppe, stilleMs);
+    };
+    r.onerror = (e) => {
+      if (e.error === 'aborted' && gestoppt) return;
+      if (e.error === 'no-speech' && text) return;
+      fehler = sttFehlertext(e.error);
+      stoppe();
+    };
+    r.onend = ende;
+    timer.start = setTimeout(() => { fehler = 'Das Mikrofon ist nicht gestartet. Erlaubnis prüfen und noch einmal tippen.'; stoppe(); }, startMs);
+    try { r.start(); } catch (e) { fehler = 'Mikrofon konnte nicht gestartet werden: ' + e.message; ende(); }
   });
+  p.stop = () => stoppe();
+  return p;
 }
 
 function sttFehlertext(code) {

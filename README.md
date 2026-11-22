@@ -3,7 +3,7 @@
 Vokabel-Lern-App für Schülerinnen und Schüler am Gymnasium (NRW), Englisch und Latein.
 Web-App (PWA) für iPhone und iPad, alle Daten bleiben lokal auf dem Gerät. Keine KI-Anbindung, keine API-Schlüssel.
 
-**App öffnen:** https://therealmenntos.github.io/vokabel-studio/
+**App öffnen:** https://thereal-menntos.github.io/vokabel-studio/
 
 ## So kommen die Vokabeln in die App
 

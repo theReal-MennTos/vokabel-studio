@@ -4,8 +4,9 @@ import { FAECHER, LEHRWERKE } from './faecher.js';
 import { esc, toast } from './util.js';
 import * as V from './views.js';
 import { importView } from './import-view.js';
-
-export const APP_VERSION = '1.0.0 (Stufe 1)';
+import { lernenView, uebungView } from './lern-views.js';
+import * as P from './plan-views.js';
+import { BETA, LS_PREFIX } from './config.js';
 
 const ROUTES = [
   ['', V.startView],
@@ -21,7 +22,15 @@ const ROUTES = [
   ['vokabel-bearbeiten/:id', V.vokabelFormView],
   ['import', importView],
   ['backup', V.backupView],
-  ['einstellungen', V.einstellungenView]
+  ['einstellungen', V.einstellungenView],
+  ['lernen', lernenView],
+  ['uebung', uebungView],
+  ['plan', P.planView],
+  ['termin-neu', P.terminFormView],
+  ['termin/:id', P.terminView],
+  ['druck', P.druckView],
+  ['erfolge', P.erfolgeView],
+  ['eltern', P.elternView]
 ];
 
 function match(path) {
@@ -38,7 +47,7 @@ function match(path) {
 }
 
 // --- aktives Profil (nur Komfort: localStorage, mit Absicherung) ---
-const PROFIL_KEY = 'vs-aktives-profil';
+const PROFIL_KEY = LS_PREFIX + 'aktives-profil';
 export function aktivesProfilId() { try { return localStorage.getItem(PROFIL_KEY); } catch { return null; } }
 export function setzeAktivesProfil(id) { try { id ? localStorage.setItem(PROFIL_KEY, id) : localStorage.removeItem(PROFIL_KEY); } catch { /* privat */ } }
 
@@ -71,6 +80,7 @@ async function render() {
     main.innerHTML = r.html;
     if (r.bind) await r.bind(main);
     if (!r.keepScroll) window.scrollTo(0, 0);
+    if (BETA) document.getElementById('title').insertAdjacentHTML('beforeend', ' <span class="badge warn">BETA</span>');
   } catch (e) {
     console.error(e);
     main.innerHTML = `<div class="msg err"><strong>Da ist etwas schiefgelaufen.</strong><br>${esc(e.message || e)}</div>
@@ -90,6 +100,7 @@ async function seed() {
 
 async function start() {
   document.getElementById('btn-profile').onclick = () => go('profile');
+  if (BETA) document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', 'Vokabeln Beta');
   try {
     await db.openDb();
     await seed();

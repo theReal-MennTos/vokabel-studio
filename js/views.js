@@ -5,6 +5,7 @@ import { esc, uid, toast, $, $$, datum, plural, isStandalone, isIOS } from './ut
 import { sprich, ttsVerfuegbar } from './speech.js';
 import * as backup from './backup.js';
 import { pruefe, speichere } from './import.js';
+import { APP_VERSION } from './config.js';
 
 const AVATARE = ['🦊', '🐼', '🐯', '🦁', '🐸', '🐙', '🦄', '🐧', '🐨', '🐵', '🦖', '🐬', '🚀', '⚽', '🎸', '🌟'];
 
@@ -124,18 +125,33 @@ export async function homeView(_p, ctx) {
   const [units, voks] = await Promise.all([db.all('units'), db.all('vokabeln')]);
   const lehrwerke = new Map((await db.all('lehrwerke')).map((l) => [l.id, l]));
   const zuletzt = units.sort((a, b) => (b.geaendertAm || '').localeCompare(a.geaendertAm || '')).slice(0, 3);
+  const [{ faelligePaare, tageBis, heute: heuteIso }, { naechsterTermin }, { hole }] = await Promise.all([import('./lernen.js'), import('./plan-views.js'), import('./belohnung.js')]);
+  const [fp, termin, bel] = await Promise.all([voks.length ? faelligePaare(ctx.profil) : { faellig: [] }, naechsterTermin(ctx.profil.id), hole(ctx.profil.id)]);
+  const tb = termin ? tageBis(termin.datum) : 0;
+  const heuteInfo = {
+    faellig: fp.faellig.length, neu: fp.neuGesamt || 0, punkte: bel.punkte, serie: bel.serie.letzterLerntag ? bel.serie.aktuell : 0, termin,
+    terminText: termin ? (tb === 0 ? 'ist heute!' : tb === 1 ? 'ist morgen' : `in ${tb} Tagen`) : '',
+    terminOffen: termin?.plan?.find((d) => d.datum === heuteIso())?.aufgaben.some((a) => !a.erledigt)
+  };
   const tile = (href, icon, title, sub, soon = false) => soon
     ? `<div class="tile soon" aria-disabled="true"><span class="tile-icon">${icon}</span><span class="tile-title">${title}</span><span class="tile-sub">${sub}</span></div>`
     : `<a class="tile" href="${href}"><span class="tile-icon">${icon}</span><span class="tile-title">${title}</span><span class="tile-sub">${sub}</span></a>`;
   const html = `
     <h2 style="margin-top:4px">Hallo ${esc(ctx.profil.name)}! ${esc(ctx.profil.avatar)}</h2>
     <p class="muted">${plural(units.length, 'Unit', 'Units')} · ${plural(voks.length, 'Vokabel', 'Vokabeln')} auf diesem Gerät</p>
+    ${voks.length ? `<div class="card heute">
+      <div class="check-head"><strong class="grow">Heute</strong>${heuteInfo.serie ? `<span class="badge warn">🔥 ${heuteInfo.serie}</span>` : ''}</div>
+      <p style="margin:6px 0">${heuteInfo.faellig ? `<strong>${heuteInfo.faellig}</strong> Vokabeln sind fällig.` : heuteInfo.neu ? `Nichts fällig. <strong>${heuteInfo.neu}</strong> Vokabeln hast du noch nie geübt.` : 'Nichts fällig – super! 🎉'}</p>
+      ${heuteInfo.termin ? `<p class="small" style="margin:6px 0">📝 <a href="#/termin/${esc(heuteInfo.termin.id)}">${esc(heuteInfo.termin.titel)}</a> ${heuteInfo.terminText}</p>` : ''}
+      <a class="btn block" href="${heuteInfo.termin && heuteInfo.terminOffen ? '#/termin/' + esc(heuteInfo.termin.id) : heuteInfo.faellig ? '#/plan' : '#/lernen'}">${heuteInfo.termin && heuteInfo.terminOffen ? '📅 Heutige Aufgaben' : (heuteInfo.faellig ? '🔁 Wiederholen' : '🃏 Lernen')}</a>
+    </div>` : ''}
     <div class="grid">
+      ${tile('#/lernen', '🃏', 'Lernen', 'Karten, Abfrage, Satzbau, Test')}
+      ${tile('#/plan', '📅', 'Lernplan', 'Fälliges & Vokabeltest-Termine')}
       ${tile('#/import', '📸', 'Vokabelseite einlesen', 'Foto → Chatbot → hier einfügen')}
       ${tile('#/bibliothek', '📚', 'Meine Bücher', 'Units und Vokabeln ansehen')}
-      ${tile('', '🃏', 'Lernen & Abfragen', 'kommt in Stufe 2', true)}
-      ${tile('', '📅', 'Lernplan & Test', 'kommt in Stufe 3', true)}
-      ${tile('', '🏆', 'Punkte & Abzeichen', 'kommt in Stufe 4', true)}
+      ${tile('#/erfolge', '🏆', 'Erfolge', `⭐ ${heuteInfo.punkte} Punkte · 🔥 ${heuteInfo.serie} Tage`)}
+      ${tile('#/eltern', '👪', 'Eltern', 'Lernfortschritt ansehen')}
       ${tile('#/backup', '💾', 'Sicherung', 'Daten sichern und laden')}
       ${tile('#/einstellungen', '⚙️', 'Einstellungen', 'Vorlesen, iPhone-Test')}
     </div>
@@ -305,7 +321,11 @@ export async function unitView({ id }, ctx) {
       ${fach.vorlesen.hinweis ? `<div class="hinweis-latein">🇮🇹 ${esc(fach.vorlesen.hinweis)}</div>` : ''}
     </div>
     <div class="btn-row">
-      <a class="btn" href="#/vokabel/${esc(voks[0]?.id || '')}" ${voks.length ? '' : 'hidden'}>🃏 Karten durchblättern</a>
+      <a class="btn" href="#/lernen?unit=${esc(unit.id)}" ${voks.length ? '' : 'hidden'}>🎯 Lernen & Test</a>
+      <a class="btn secondary" href="#/vokabel/${esc(voks[0]?.id || '')}" ${voks.length ? '' : 'hidden'}>📖 Durchblättern</a>
+    </div>
+    <div class="btn-row">
+      <a class="btn secondary" href="#/termin-neu?unit=${esc(unit.id)}">📅 Test-Termin eintragen</a>
       <a class="btn secondary" href="#/import?lw=${esc(lw.id)}&unit=${esc(unit.id)}">📸 Weitere Seite einlesen</a>
     </div>
     ${parts.map((p) => {
@@ -327,7 +347,7 @@ export async function unitView({ id }, ctx) {
     </ul></details>` : ''}
     ${satzbau.length ? `<details class="card"><summary>Satzbau-Aufgaben (${satzbau.length})</summary><ul class="list">
       ${satzbau.map((s) => `<li class="list-item"><span class="grow">${esc(s.deutsch)}<br><span class="vok-de">→ ${esc(s.loesung)}</span></span></li>`).join('')}
-    </ul><p class="muted small">Üben kannst du sie ab Stufe 2.</p></details>` : ''}
+    </ul></details>` : ''}
     <div class="btn-row" style="margin-top:28px">
       <button class="btn secondary" id="u-titel">Titel ändern</button>
       <button class="btn danger" id="u-del">${unitWort} löschen</button>
@@ -591,6 +611,9 @@ export async function einstellungenView(_p, ctx) {
       </select>
       <label for="st-tempo">Vorlese-Tempo: <span id="st-tempo-w">${Math.round((e.sprechtempo || 0.9) * 100)} %</span></label>
       <input id="st-tempo" type="range" min="0.6" max="1.1" step="0.05" value="${e.sprechtempo || 0.9}" style="width:100%;height:44px">
+      <label class="switch" style="margin-top:10px"><input type="checkbox" id="st-auto" ${e.vorlesenAutomatisch ? 'checked' : ''}> Fremdwörter beim Abfragen automatisch vorlesen</label>
+      <label for="st-ziel">Neue Vokabeln pro Tag</label>
+      <select id="st-ziel">${[5, 10, 15, 20, 30].map((n) => `<option ${n === (e.tagesziel || 20) ? 'selected' : ''}>${n}</option>`).join('')}</select>
     </div>
     <div class="card">
       <h3 style="margin-top:0">🔊 Vorlesen testen</h3>
@@ -612,20 +635,25 @@ export async function einstellungenView(_p, ctx) {
       <p class="small">${esc(speicher || 'keine Angabe')}</p>
       <button class="btn secondary block" id="st-persist">Daten vor automatischem Löschen schützen</button>
     </div>
-    <p class="muted small" style="text-align:center">Vokabel-Studio · Version 1.0.0 (Stufe 1) · Alle Daten bleiben auf diesem Gerät.</p>`;
+    <p class="muted small" style="text-align:center">Vokabel-Studio · Version ${esc(APP_VERSION)} · Alle Daten bleiben auf diesem Gerät.</p>`;
   return {
     title: 'Einstellungen', back: 'home', html,
     bind(root) {
       bindSprechen(root, ctx);
       const speichern = async () => {
         const p = await db.get('profile', ctx.profil.id);
-        p.einstellungen = { ...(p.einstellungen || {}), abfrageRichtung: $('#st-richtung', root).value, sprechtempo: +$('#st-tempo', root).value };
+        p.einstellungen = {
+          ...(p.einstellungen || {}), abfrageRichtung: $('#st-richtung', root).value, sprechtempo: +$('#st-tempo', root).value,
+          vorlesenAutomatisch: $('#st-auto', root).checked, tagesziel: +$('#st-ziel', root).value
+        };
         await db.put('profile', p);
         ctx.profil = p;
       };
       $('#st-richtung', root).onchange = speichern;
       $('#st-tempo', root).oninput = () => { $('#st-tempo-w', root).textContent = Math.round($('#st-tempo', root).value * 100) + ' %'; };
       $('#st-tempo', root).onchange = speichern;
+      $('#st-auto', root).onchange = speichern;
+      $('#st-ziel', root).onchange = speichern;
       $('#st-persist', root).onclick = async () => {
         if (!navigator.storage?.persist) { toast('Dieser Browser unterstützt das nicht. Sichere regelmäßig!'); return; }
         const ok = await navigator.storage.persist();

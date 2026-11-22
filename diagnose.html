@@ -46,6 +46,7 @@
         <button class="btn soft" data-stt="de-DE">Deutsch sprechen</button>
       </div>
       <p class="small muted">Nach dem Tippen z. B. „mountain“ bzw. „Berg“ sagen. Die App stoppt nach kurzer Stille selbst – oder nochmal tippen. Gern 2–3 Mal pro Sprache probieren.</p>
+      <p class="small muted">Version Spracheingabe: 3</p>
       <div class="ergebnis small" id="stt-erg"></div>
     </div>
 
@@ -135,7 +136,8 @@
         const txt = r.ok ? `✓ ${b.dataset.stt}: „${r.text}“ (${s} s)${r.alternativen.length > 1 ? ' – Alternativen: ' + r.alternativen.slice(1).join(', ') : ''}` : `❌ ${b.dataset.stt}: ${r.grund} (${s} s)`;
         erg.textContent = txt;
         const k = 'STT ' + b.dataset.stt;
-        setze(k, B[k] ? B[k] + ' | ' + txt : txt);   // mehrere Versuche sammeln
+        const mitLog = txt + (r.protokoll?.length ? ' [' + r.protokoll.join('; ') + ']' : '');
+        setze(k, B[k] ? B[k] + ' | ' + mitLog : mitLog);   // mehrere Versuche sammeln
       };
     });
 

@@ -7,6 +7,7 @@ import * as L from './lernen.js';
 import { formenAufgaben, tabelleHtml } from './latein.js';
 import { nachSitzung, nachTest } from './belohnung.js';
 import { formenHtml } from './views.js';
+import * as fx from './effekte.js';
 
 // ---------- gemeinsame Daten ----------
 export async function unitKontext() {
@@ -189,7 +190,17 @@ export async function uebungView(_p, ctx) {
     <div class="sess-head"><span>${S.i + 1} / ${S.items.length}</span><span class="grow"><span class="bar"><span style="width:${Math.round(S.i / S.items.length * 100)}%"></span></span></span>
     ${S.cfg.modus === 'test' ? '' : `<span>⭐ ${S.punkte}</span>`}</div>`;
   const r = await ({ karte: karteItem, tippen: tippItem, mc: mcItem, satzbau: satzbauItem, formen: formenItem, frei: freiItem }[it.typ])(it, ctx);
-  return { title: S.titel, back: S.cfg.zurueck || 'lernen', keepScroll: !!r.keepScroll, html: kopf + r.html, bind: r.bind };
+  const bind = async (root) => {
+    await r.bind?.(root);
+    // Animation bei richtiger Antwort (nur wenn eingeschaltet)
+    if (S.fb && S.fb.ergebnis !== 'falsch' && !S.fb.fx) {
+      S.fb.fx = true;
+      const el = root.querySelector('.msg.ok, .msg.warn, .btn.ok');
+      fx.puls(el);
+      fx.punkte(S.fb.ergebnis === 'fast' ? 7 : 10, el);
+    }
+  };
+  return { title: S.titel, back: S.cfg.zurueck || 'lernen', keepScroll: !!r.keepScroll, html: kopf + r.html, bind };
 }
 
 const sprachLang = (it, seite) => (seite === 'fremd' ? it.fach.vorlesen.stimmeSprache : 'de-DE');
@@ -237,7 +248,7 @@ async function weiter(ctx, ergebnis, extra = {}) {
   }
   S.punkte += res.punkte;
   S.neueAbzeichen.push(...res.neueAbzeichen);
-  res.neueAbzeichen.forEach((a) => toast(`${a.icon} Neues Abzeichen: ${a.name}!`, 3500));
+  res.neueAbzeichen.forEach((a, i) => setTimeout(() => { if (!fx.abzeichen(a)) toast(`${a.icon} Neues Abzeichen: ${a.name}!`, 3500); }, i * 3400));
   S.serie = korrekt ? S.serie + 1 : 0;
   S.maxSerie = Math.max(S.maxSerie, S.serie);
   S.antworten.push({ item: it, ergebnis, antwort: extra.antwort || '' });
@@ -526,6 +537,9 @@ async function endeView(ctx) {
     if (S.cfg.terminRef) await markiereTerminAufgabe(S.cfg.terminRef);
     import('./sicherung.js').then((m) => m.autoSicherung()).then((r) => { if (r?.ok) toast('💾 Automatisch gesichert'); }).catch(() => {});
     S.ende = { richtig, gesamt: gewertet.length, prozent, schwach };
+    // Erfolgs-Animationen (nur wenn eingeschaltet)
+    if (S.cfg.modus === 'test' ? prozent >= 75 : prozent >= 80 && gewertet.length >= 5) setTimeout(() => fx.konfetti(prozent >= 100 ? 3 : prozent >= 90 ? 2 : 1), 300);
+    res.neueAbzeichen.forEach((a, i) => setTimeout(() => fx.abzeichen(a), 900 + i * 3400));
   }
   const E = S.ende;
   const test = S.cfg.modus === 'test';

@@ -14,6 +14,14 @@
   <link rel="icon" href="icons/icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="css/app.css">
+  <script>
+    // Gemerktes Design sofort setzen, damit beim Start nichts hell aufblitzt
+    try {
+      var d = localStorage.getItem((/beta/i.test(location.pathname) ? 'vsb-' : 'vs-') + 'design');
+      if (d === 'dunkel') document.documentElement.dataset.theme = 'dark';
+      else if (d === 'hell') document.documentElement.dataset.theme = 'light';
+    } catch (e) { /* privat */ }
+  </script>
 </head>
 <body>
   <header class="topbar">

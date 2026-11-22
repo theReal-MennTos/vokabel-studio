@@ -7,6 +7,9 @@ import { importView } from './import-view.js';
 import { lernenView, uebungView } from './lern-views.js';
 import * as P from './plan-views.js';
 import { BETA, LS_PREFIX } from './config.js';
+import { setzeDesign } from './design.js';
+import { setzeAnimationen } from './effekte.js';
+import { avatarHtml } from './avatare.js';
 
 const ROUTES = [
   ['', V.startView],
@@ -63,6 +66,8 @@ async function render() {
   const id = aktivesProfilId();
   ctx.profil = id ? await db.get('profile', id) : null;
   if (!ctx.profil && id) setzeAktivesProfil(null);
+  setzeDesign(ctx.profil?.einstellungen?.design || 'auto');
+  setzeAnimationen(ctx.profil?.einstellungen?.animationen);
 
   const main = document.getElementById('app');
   try {
@@ -75,7 +80,7 @@ async function render() {
     back.onclick = () => (r.back === 'history' ? history.back() : go(r.back));
     const pb = document.getElementById('btn-profile');
     pb.hidden = !ctx.profil || r.hideProfile;
-    pb.textContent = ctx.profil?.avatar || '';
+    pb.innerHTML = ctx.profil ? avatarHtml(ctx.profil.avatar, 24) : '';
     pb.title = ctx.profil ? `${ctx.profil.name} – Profil wechseln` : '';
     main.innerHTML = r.html;
     if (r.bind) await r.bind(main);

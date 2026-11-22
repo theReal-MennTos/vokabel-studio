@@ -5,6 +5,7 @@ import { esc, $, $$, toast, uid, plural, datum } from './util.js';
 import * as L from './lernen.js';
 import { starteSitzung, unitKontext } from './lern-views.js';
 import { ABZEICHEN, hole as holeBelohnung } from './belohnung.js';
+import { avatarHtml } from './avatare.js';
 
 // ================= Lernplan =================
 
@@ -300,7 +301,7 @@ export async function elternView(_p, ctx) {
     const kommend = termine.filter((t) => t.datum >= L.heute()).sort((a, c) => a.datum.localeCompare(c.datum));
     tests.sort((a, c) => c.zeitpunkt.localeCompare(a.zeitpunkt));
     return `<div class="card">
-      <h3 style="margin-top:0">${esc(p.avatar)} ${esc(p.name)}</h3>
+      <h3 style="margin-top:0">${avatarHtml(p.avatar, 22)} ${esc(p.name)}</h3>
       <p class="small">Zuletzt aktiv: <strong>${letzte ? datum(letzte) : 'noch nie'}</strong> · Serie: <strong>${plural(b.serie.aktuell, 'Tag', 'Tage')}</strong> (Rekord ${b.serie.rekord}) · ⭐ ${b.punkte}</p>
       <h4 class="muted small">ANTWORTEN DER LETZTEN 7 TAGE</h4>
       <div class="woche">${tage.map((t) => `<div><span style="height:${Math.round(proTag.get(t) / max * 56) + 2}px"></span><small>${new Date(t + 'T12:00').toLocaleDateString('de-DE', { weekday: 'short' })}</small><b>${proTag.get(t)}</b></div>`).join('')}</div>

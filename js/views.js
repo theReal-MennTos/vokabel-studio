@@ -6,8 +6,9 @@ import { sprich, ttsVerfuegbar } from './speech.js';
 import * as backup from './backup.js';
 import { pruefe, speichere } from './import.js';
 import { APP_VERSION } from './config.js';
-
-const AVATARE = ['🦊', '🐼', '🐯', '🦁', '🐸', '🐙', '🦄', '🐧', '🐨', '🐵', '🦖', '🐬', '🚀', '⚽', '🎸', '🌟'];
+import { KATEGORIEN, INI_FARBEN, avatarHtml, istInitialen, parseInitialen, initialen, zufall } from './avatare.js';
+import { DESIGNS, setzeDesign } from './design.js';
+import * as fx from './effekte.js';
 
 function brauchtProfil(ctx) {
   if (!ctx.profil) { ctx.go('profile'); return true; }
@@ -43,7 +44,7 @@ export async function profileView(_p, ctx) {
     <div class="profile-grid">
       ${profile.map((p) => `
         <button class="tile profile-tile" data-profil="${esc(p.id)}">
-          <span class="tile-icon">${esc(p.avatar)}</span>
+          <span class="tile-icon">${avatarHtml(p.avatar, 46)}</span>
           <span class="tile-title">${esc(p.name)}</span>
         </button>`).join('')}
       <a class="tile profile-tile" href="#/profil-neu">
@@ -51,7 +52,7 @@ export async function profileView(_p, ctx) {
       </a>
     </div>
     ${profile.length ? `<h3>Profile bearbeiten</h3><div class="card" style="padding:0"><ul class="list">
-      ${profile.map((p) => `<li><a class="list-item" href="#/profil/${esc(p.id)}"><span>${esc(p.avatar)}</span><span class="grow">${esc(p.name)}</span><span class="chev">›</span></a></li>`).join('')}
+      ${profile.map((p) => `<li><a class="list-item" href="#/profil/${esc(p.id)}"><span>${avatarHtml(p.avatar, 22)}</span><span class="grow">${esc(p.name)}</span><span class="chev">›</span></a></li>`).join('')}
     </ul></div>` : ''}`;
   return {
     title: 'Profil wählen', hideProfile: true, html,
@@ -64,13 +65,23 @@ export async function profileView(_p, ctx) {
 export async function profilFormView({ id }, ctx) {
   const p = id ? await db.get('profile', id) : null;
   if (id && !p) { ctx.go('profile'); return null; }
-  const d = p || { name: '', avatar: AVATARE[Math.floor(Math.random() * AVATARE.length)], fachIds: ['englisch'] };
+  const d = p || { name: '', avatar: zufall(), fachIds: ['englisch'] };
+  const ini = istInitialen(d.avatar) ? parseInitialen(d.avatar) : { text: (d.name || '').slice(0, 2).toUpperCase(), farbe: INI_FARBEN[0] };
   const html = `
     <label for="pf-name">Wie heißt du?</label>
     <input id="pf-name" type="text" maxlength="30" autocomplete="off" value="${esc(d.name)}" placeholder="Vorname">
-    <label>Dein Bild</label>
-    <div class="emoji-pick" id="pf-avatar">
-      ${AVATARE.map((a) => `<button type="button" class="${a === d.avatar ? 'on' : ''}" data-a="${a}" aria-label="Bild ${a}">${a}</button>`).join('')}
+    <label>Deine Figur</label>
+    <div class="ava-vorschau" id="pf-vorschau">${avatarHtml(d.avatar, 56)}</div>
+    <div class="ava-tabs" id="pf-tabs">
+      ${KATEGORIEN.map((k, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-tab="${i}">${esc(k.name)}</button>`).join('')}
+      <button type="button" class="chip" data-tab="ini">Initialen</button>
+    </div>
+    ${KATEGORIEN.map((k, i) => `<div class="emoji-pick" data-panel="${i}" ${i === 0 ? '' : 'hidden'}>
+      ${k.liste.map((a) => `<button type="button" class="${a === d.avatar ? 'on' : ''}" data-a="${a}" aria-label="Figur ${a}">${a}</button>`).join('')}</div>`).join('')}
+    <div data-panel="ini" hidden>
+      <label for="pf-ini">Buchstaben (max. 2)</label><input id="pf-ini" type="text" maxlength="2" value="${esc(ini.text)}" autocapitalize="characters" style="max-width:160px">
+      <label>Farbe</label>
+      <div class="emoji-pick" id="pf-farben">${INI_FARBEN.map((f) => `<button type="button" class="farbe ${f === ini.farbe ? 'on' : ''}" data-f="${f}" style="background:${f}" aria-label="Farbe ${f}"></button>`).join('')}</div>
     </div>
     <label>Deine Fächer</label>
     <div class="btn-row" id="pf-faecher">
@@ -82,9 +93,23 @@ export async function profilFormView({ id }, ctx) {
     title: p ? 'Profil bearbeiten' : 'Neues Profil', back: 'profile', hideProfile: true, html,
     bind(root) {
       let avatar = d.avatar;
-      $$('#pf-avatar button', root).forEach((b) => b.onclick = () => {
+      let farbe = ini.farbe;
+      const vorschau = () => { $('#pf-vorschau', root).innerHTML = avatarHtml(avatar, 56); };
+      $$('#pf-tabs .chip', root).forEach((c) => c.onclick = () => {
+        $$('#pf-tabs .chip', root).forEach((x) => x.classList.toggle('on', x === c));
+        $$('[data-panel]', root).forEach((pn) => { pn.hidden = pn.dataset.panel !== c.dataset.tab; });
+        if (c.dataset.tab === 'ini') { avatar = initialen($('#pf-ini', root).value || $('#pf-name', root).value, farbe); vorschau(); }
+      });
+      $$('[data-a]', root).forEach((b) => b.onclick = () => {
         avatar = b.dataset.a;
-        $$('#pf-avatar button', root).forEach((x) => x.classList.toggle('on', x === b));
+        $$('[data-a]', root).forEach((x) => x.classList.toggle('on', x === b));
+        vorschau();
+      });
+      $('#pf-ini', root).oninput = () => { avatar = initialen($('#pf-ini', root).value, farbe); vorschau(); };
+      $$('#pf-farben [data-f]', root).forEach((b) => b.onclick = () => {
+        farbe = b.dataset.f;
+        $$('#pf-farben [data-f]', root).forEach((x) => x.classList.toggle('on', x === b));
+        avatar = initialen($('#pf-ini', root).value || $('#pf-name', root).value, farbe); vorschau();
       });
       $('#pf-save', root).onclick = async () => {
         const name = $('#pf-name', root).value.trim();
@@ -93,7 +118,7 @@ export async function profilFormView({ id }, ctx) {
         if (!fachIds.length) { toast('Wähle mindestens ein Fach.'); return; }
         const rec = p ? { ...p, name, avatar, fachIds } : {
           id: uid('pr'), name, avatar, fachIds, lehrwerkIds: [], erstelltAm: new Date().toISOString(),
-          einstellungen: { abfrageRichtung: 'beide', vorlesenAutomatisch: false, sprechtempo: 0.9, tagesziel: 20 }
+          einstellungen: { abfrageRichtung: 'beide', vorlesenAutomatisch: false, sprechtempo: 0.9, tagesziel: 20, design: 'auto', animationen: false }
         };
         await db.put('profile', rec);
         if (!p) {
@@ -139,7 +164,7 @@ export async function homeView(_p, ctx) {
     ? `<div class="tile soon" aria-disabled="true"><span class="tile-icon">${icon}</span><span class="tile-title">${title}</span><span class="tile-sub">${sub}</span></div>`
     : `<a class="tile" href="${href}"><span class="tile-icon">${icon}</span><span class="tile-title">${title}</span><span class="tile-sub">${sub}</span></a>`;
   const html = `
-    <h2 style="margin-top:4px">Hallo ${esc(ctx.profil.name)}! ${esc(ctx.profil.avatar)}</h2>
+    <h2 style="margin-top:4px">Hallo ${esc(ctx.profil.name)}! ${avatarHtml(ctx.profil.avatar, 22)}</h2>
     <p class="muted">${plural(units.length, 'Unit', 'Units')} · ${plural(voks.length, 'Vokabel', 'Vokabeln')} auf diesem Gerät</p>
     ${erinnerung ? `<a class="msg warn" href="#/backup" style="display:block;text-decoration:none">💾 ${erinnerung.seit === null ? 'Du hast noch nie gesichert.' : `Letzte Sicherung vor ${erinnerung.seit} Tagen.`} <strong>Jetzt sichern ›</strong></a>` : ''}
     ${voks.length ? `<div class="card heute">
@@ -706,6 +731,14 @@ export async function einstellungenView(_p, ctx) {
   } catch { /* egal */ }
   const html = `
     <div class="card">
+      <h3 style="margin-top:0">🎨 Darstellung</h3>
+      <label>Design</label>
+      <div class="btn-row" id="st-design">${DESIGNS.map(([w, t]) => `<button class="btn ${(e.design || 'auto') === w ? '' : 'secondary'}" data-design="${w}">${w === 'dunkel' ? '🌙 ' : w === 'hell' ? '☀️ ' : '📱 '}${esc(t)}</button>`).join('')}</div>
+      <label class="switch" style="margin-top:14px"><input type="checkbox" id="st-anim" ${e.animationen ? 'checked' : ''}> Animationen bei Erfolgen (Konfetti, Abzeichen, Punkte)</label>
+      <div class="btn-row"><button class="btn soft" id="st-anim-test">✨ Vorschau</button></div>
+      ${window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? '<p class="muted small">Hinweis: Auf diesem Gerät ist „Bewegung reduzieren“ an. Dann bleiben Animationen aus.</p>' : ''}
+    </div>
+    <div class="card">
       <h3 style="margin-top:0">Abfrage</h3>
       <label for="st-richtung">Richtung</label>
       <select id="st-richtung">
@@ -748,11 +781,25 @@ export async function einstellungenView(_p, ctx) {
         const p = await db.get('profile', ctx.profil.id);
         p.einstellungen = {
           ...(p.einstellungen || {}), abfrageRichtung: $('#st-richtung', root).value, sprechtempo: +$('#st-tempo', root).value,
-          vorlesenAutomatisch: $('#st-auto', root).checked, tagesziel: +$('#st-ziel', root).value
+          vorlesenAutomatisch: $('#st-auto', root).checked, tagesziel: +$('#st-ziel', root).value,
+          animationen: $('#st-anim', root).checked, design: design
         };
         await db.put('profile', p);
         ctx.profil = p;
+        fx.setzeAnimationen(p.einstellungen.animationen);
       };
+      let design = e.design || 'auto';
+      $$('#st-design [data-design]', root).forEach((b) => b.onclick = async () => {
+        design = b.dataset.design;
+        setzeDesign(design);
+        $$('#st-design [data-design]', root).forEach((x) => x.classList.toggle('secondary', x !== b));
+        await speichern();
+      });
+      $('#st-anim', root).onchange = async () => {
+        await speichern();
+        if ($('#st-anim', root).checked) fx.konfetti(1);
+      };
+      $('#st-anim-test', root).onclick = () => fx.abzeichen({ icon: '🌟', name: 'Vorschau', text: 'So sieht es aus, wenn du ein Abzeichen bekommst.' }, { erzwingen: true });
       $('#st-richtung', root).onchange = speichern;
       $('#st-tempo', root).oninput = () => { $('#st-tempo-w', root).textContent = Math.round($('#st-tempo', root).value * 100) + ' %'; };
       $('#st-tempo', root).onchange = speichern;

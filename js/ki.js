@@ -61,7 +61,7 @@ export async function anzeigeName() {
 
 // ---------- Fehler ----------
 export class KiFehler extends Error {
-  constructor(text, { status = 0, uebergang = false } = {}) { super(text); this.status = status; this.uebergang = uebergang; }
+  constructor(text, { status = 0, uebergang = false, detail = '', warten = 0 } = {}) { super(text); this.status = status; this.uebergang = uebergang; this.detail = detail; this.warten = warten; }
 }
 const UEBERLAST = [429, 500, 502, 503, 504];
 
@@ -80,7 +80,8 @@ async function pruefeAntwort(res, anbieter, modell) {
     429: `Das kostenlose Limit bei ${n}${m} ist gerade erreicht.`,
     503: `${n}${m} ist gerade überlastet.`
   }[res.status] || `${n}${m} meldet einen Fehler (${res.status}).`;
-  throw new KiFehler(text + (detail ? `\n(Details: ${detail.slice(0, 160)})` : ''), { status: res.status, uebergang: UEBERLAST.includes(res.status) });
+  const warten = Math.min(30, parseFloat(res.headers.get('retry-after')) || 0);
+  throw new KiFehler(text + (detail ? `\n(Details: ${detail.slice(0, 160)})` : ''), { status: res.status, uebergang: UEBERLAST.includes(res.status), detail, warten });
 }
 
 async function hole(url, opts, anbieter, { timeoutMs = 60000, modell = '' } = {}) {
@@ -162,12 +163,19 @@ export function bildVorbereiten(file, maxSeite = 1800, qualitaet = 0.85) {
 async function anfrage(anbieter, schluessel, modell, prompt, { bilder, json, timeoutMs }) {
   const zuLang = () => new KiFehler('Die Antwort war zu lang und wurde abgeschnitten. Bitte weniger Vokabeln pro Foto (z. B. halbe Seite).', { status: 'inhalt' });
   if (anbieter === 'gemini') {
-    const body = {
-      contents: [{ role: 'user', parts: [{ text: prompt }, ...bilder.map((b) => ({ inline_data: { mime_type: b.mime, data: b.base64 } }))] }],
-      generationConfig: { temperature: 0.2, ...(json ? { responseMimeType: 'application/json' } : {}) }
+    // „Nachdenken“ der neueren Modelle kostet viel Zeit und hilft beim Abschreiben nicht → möglichst abschalten
+    const denken = /gemini-2\.5-flash/i.test(modell) ? { thinkingBudget: 0 } : /gemini-3/i.test(modell) ? { thinkingLevel: 'low' } : null;
+    const senden = (mitDenken) => {
+      const body = {
+        contents: [{ role: 'user', parts: [{ text: prompt }, ...bilder.map((b) => ({ inline_data: { mime_type: b.mime, data: b.base64 } }))] }],
+        generationConfig: { temperature: 0.2, ...(json ? { responseMimeType: 'application/json' } : {}), ...(mitDenken && denken ? { thinkingConfig: denken } : {}) }
+      };
+      return hole(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modell)}:generateContent`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': schluessel }, body: JSON.stringify(body) }, 'gemini', { timeoutMs, modell });
     };
-    const j = await hole(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modell)}:generateContent`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': schluessel }, body: JSON.stringify(body) }, 'gemini', { timeoutMs, modell });
+    let j;
+    try { j = await senden(true); }
+    catch (err) { if (denken && err.status === 400 && /think/i.test(err.detail || '')) j = await senden(false); else throw err; }
     const kand = j.candidates?.[0];
     if (!kand) throw new KiFehler('Gemini hat keine Antwort geliefert' + (j.promptFeedback?.blockReason ? ` (blockiert: ${j.promptFeedback.blockReason})` : '') + '.', { status: 'leer', uebergang: true });
     if (kand.finishReason === 'MAX_TOKENS') throw zuLang();
@@ -193,7 +201,8 @@ const kurz = (st) => ({ 429: 'Limit erreicht', 503: 'überlastet', 500: 'Serverf
 
 /**
  * Schickt Text (+ optional Bilder) an die eingerichteten Anbieter der Reihe nach (Hauptanbieter zuerst).
- * Je Modell: bei Überlastung 1 Wiederholung nach 3 s; bei Limit/Zeitüberschreitung sofort weiter.
+ * Je Modell: bei Überlastung 1 Wiederholung nach 3 s; bei Zeitüberschreitung sofort weiter.
+ * Limit (429): Gemini → nächstes Modell; Mistral/Groq (Kontolimit) → warten (Retry-After, mind. 2 s), 1× wiederholen, dann nächster Anbieter.
  * Danach Ausweichmodelle, danach nächster Anbieter. onStatus(text) meldet Zwischenstände.
  */
 export async function frage(prompt, { bilder = [], json = false, onStatus = () => {}, timeoutMs } = {}) {
@@ -206,6 +215,7 @@ export async function frage(prompt, { bilder = [], json = false, onStatus = () =
   for (const anbieter of anbieterListe) {
     const konto = e.konten[anbieter];
     const name = ANBIETER[anbieter].name;
+    const kontoLimit = anbieter !== 'gemini';
     for (const modell of [konto.modell, ...(konto.ausweich || [])]) {
       if (!erster) onStatus(`Versuche ${name} (${modell}) …`);
       erster = false;
@@ -217,9 +227,17 @@ export async function frage(prompt, { bilder = [], json = false, onStatus = () =
           return text;
         } catch (err) {
           if (!(err instanceof KiFehler) || err.status === 'inhalt') throw err;     // Inhaltsproblem: anderer Anbieter hilft nicht
-          protokoll.push(`${name} ${modell}: ${kurz(err.status)}`);
+          const det = err.detail ? ` („${err.detail.replace(/\s+/g, ' ').slice(0, 70)}“)` : '';
+          protokoll.push(`${name} ${modell}: ${kurz(err.status)}${det}`);
           if (!err.uebergang) { naechster = 'anbieter'; break; }                     // Schlüssel/Zugriff → nächster Anbieter
-          if (err.status === 429 || err.status === 'zeit' || versuch === 1) { naechster = true; break; }
+          if (err.status === 'zeit' || versuch === 1) { naechster = err.status === 429 && kontoLimit ? 'anbieter' : true; break; }
+          if (err.status === 429) {
+            // Gemini: Limit gilt je Modell → nächstes Modell. Mistral/Groq: Limit gilt fürs ganze Konto → kurz warten, dann gleiches Modell
+            if (!kontoLimit) { naechster = true; break; }
+            const s = Math.max(2, Math.ceil(err.warten || 2));
+            for (let r = s; r > 0; r--) { onStatus(`${name}: Limit erreicht. Neuer Versuch in ${r} s …`); await warte(1000); }
+            continue;
+          }
           for (let r = 3; r > 0; r--) { onStatus(`${name} (${modell}) ist überlastet. Neuer Versuch in ${r} s …`); await warte(1000); }
         }
       }

@@ -321,12 +321,15 @@ export async function elternView(_p, ctx) {
   const kontoZeile = (id) => {
     const k = ki.konten[id], a = K.ANBIETER[id];
     const ok = k && k.schluessel && k.modell;
-    return `<div class="list-item" style="padding:10px 0;flex-wrap:wrap">
-      <span class="grow"><strong>${esc(a.name)}</strong>${ok && ki.haupt === id ? ' <span class="badge ok">Hauptanbieter</span>' : ''}<br>
-        <span class="small muted">${ok ? `Modell ${esc(k.modell)}${k.ausweich?.length ? ` · Ausweich: ${esc(k.ausweich.join(', '))}` : ''}` : 'nicht eingerichtet'}</span></span>
-      ${ok && ki.haupt !== id ? `<button class="btn secondary" data-haupt="${id}" style="min-height:44px;font-size:15px">Als Hauptanbieter</button>` : ''}
-      <button class="btn ${ok ? 'secondary' : 'soft'}" data-bearb="${id}" style="min-height:44px;font-size:15px">${ok ? 'Ändern' : 'Einrichten'}</button>
-      ${ok ? `<button class="btn danger" data-weg="${id}" style="min-height:44px;font-size:15px">Entfernen</button>` : ''}
+    return `<div class="ki-konto">
+      <div class="ki-konto-kopf"><strong>${esc(a.name)}</strong>${ok && ki.haupt === id ? '<span class="badge ok">Hauptanbieter</span>' : ''}${!ok ? '<span class="muted small">nicht eingerichtet</span>' : ''}</div>
+      ${ok ? `<div class="small"><span class="muted">Hauptmodell:</span> <code>${esc(k.modell)}</code></div>
+        <div class="small"><span class="muted">Ausweichmodelle:</span> ${k.ausweich?.length ? k.ausweich.map((m) => `<code>${esc(m)}</code>`).join(' ') : 'keine'}</div>` : ''}
+      <div class="ki-konto-knoepfe">
+        ${ok && ki.haupt !== id ? `<button class="btn secondary" data-haupt="${id}">Als Hauptanbieter</button>` : ''}
+        <button class="btn ${ok ? 'secondary' : 'soft'}" data-bearb="${id}">${ok ? 'Ändern' : 'Einrichten'}</button>
+        ${ok ? `<button class="btn danger" data-weg="${id}">Entfernen</button>` : ''}
+      </div>
     </div>`;
   };
   const html = `${karten.join('') || '<div class="card muted">Noch keine Profile.</div>'}

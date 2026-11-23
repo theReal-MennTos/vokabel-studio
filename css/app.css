@@ -435,3 +435,9 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 44px; display
 .ki-aus-liste { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; background: var(--bg); }
 .ki-aus-zeile { display: flex !important; align-items: center; gap: 8px; min-height: 46px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .ki-aus-zeile:last-child { border-bottom: 0; }
+.ki-konto { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.ki-konto:last-child { border-bottom: 0; }
+.ki-konto-kopf { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; font-size: 18px; }
+.ki-konto code { display: inline-block; font-size: 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; margin: 2px 2px 0 0; word-break: break-all; }
+.ki-konto-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.ki-konto-knoepfe .btn { flex: 1 1 140px; min-height: 46px; font-size: 15px; }

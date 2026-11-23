@@ -156,7 +156,9 @@ async function promptSchritt(ctx) {
           for (let i = 0; i < dateien.length; i++) {
             status.innerHTML = `<div class="msg info"><span class="spinner"></span> Foto ${i + 1} von ${dateien.length} wird ausgewertet … (dauert meist 10–40 Sekunden)</div>`;
             const bild = await K.bildVorbereiten(dateien[i]);
-            const antwort = await K.frage(text, { bilder: [bild], json: true });
+            const antwort = await K.frage(text, { bilder: [bild], json: true, onStatus: (m) => {
+              status.innerHTML = `<div class="msg info"><span class="spinner"></span> Foto ${i + 1} von ${dateien.length}: ${esc(m)}</div>`;
+            } });
             roh.push(antwort);
             const p1 = parseAntwort(antwort);
             if (p1.fehler.length) throw new Error(`Foto ${i + 1}: ${p1.fehler[0]}`);

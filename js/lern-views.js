@@ -518,7 +518,7 @@ Mein Satz: ${ta.value.trim()}`;
         const box = $('#fr-antwort', root);
         kb.disabled = true; box.innerHTML = '<div class="msg info"><span class="spinner"></span> Die KI prüft deinen Satz …</div>';
         try {
-          const a = await K.frage(pruefText());
+          const a = await K.frage(pruefText(), { onStatus: (m) => { box.innerHTML = `<div class="msg info"><span class="spinner"></span> ${esc(m)}</div>`; } });
           box.innerHTML = `<div class="card ki-antwort">🤖 ${esc(a.trim()).replace(/\*\*/g, '').replace(/\n/g, '<br>')}</div>`;
         } catch (e) { box.innerHTML = `<div class="msg err small">${esc(e.message).replace(/\n/g, '<br>')}</div>`; }
         kb.disabled = false;

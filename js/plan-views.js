@@ -320,7 +320,7 @@ export async function elternView(_p, ctx) {
     <div class="card" id="ki-karte">
       <h3 style="margin-top:0">🤖 KI-Anbindung <span class="badge">optional</span></h3>
       <p class="small">Mit einem eigenen, kostenlosen Zugangsschlüssel wertet die App Fotos der Vokabelseite <strong>selbst</strong> aus – ohne Kopieren und Einfügen. Außerdem kann die KI eigene Sätze prüfen. Der Schlüssel bleibt nur auf diesem Gerät und kommt <strong>nicht</strong> in die Sicherungsdatei.</p>
-      ${ki.schluessel && ki.modell ? `<div class="msg ok small">✓ Eingerichtet: <strong>${esc(K.ANBIETER[ki.anbieter].name)}</strong>, Modell <strong>${esc(ki.modell)}</strong></div>` : ''}
+      ${ki.schluessel && ki.modell ? `<div class="msg ok small">✓ Eingerichtet: <strong>${esc(K.ANBIETER[ki.anbieter].name)}</strong>, Modell <strong>${esc(ki.modell)}</strong>${ki.ausweich?.length ? `<br>Ausweichmodelle bei Überlastung: ${esc(ki.ausweich.join(', '))}` : '<br>Keine Ausweichmodelle – zum Festlegen „Prüfen & Modelle laden“ und speichern.'}</div>` : ''}
       <label>Anbieter</label>
       <div class="btn-row" id="ki-anbieter" style="margin-top:0">${Object.entries(K.ANBIETER).map(([id, a]) => `<button class="btn ${ki.anbieter === id ? '' : 'secondary'}" data-anb="${id}">${esc(a.name)}${id === 'gemini' ? ' ⭐' : ''}</button>`).join('')}</div>
       <p class="small muted" id="ki-daten"></p>
@@ -363,7 +363,8 @@ export async function elternView(_p, ctx) {
             <select id="ki-modell">${liste.map((m) => `<option value="${esc(m.id)}" ${m.id === vor ? 'selected' : ''}>${esc(m.name)}${m.bild === false ? ' (ohne Bild)' : ''}</option>`).join('')}</select>
             <div class="btn-row"><button class="btn" id="ki-speichern">Speichern</button></div>`;
           $('#ki-speichern', root).onclick = async () => {
-            await K.speichere({ anbieter, schluessel: key, modell: $('#ki-modell', root).value });
+            const gewaehlt = $('#ki-modell', root).value;
+            await K.speichere({ anbieter, schluessel: key, modell: gewaehlt, ausweich: K.ausweichListe(anbieter, liste, gewaehlt) });
             toast('KI-Anbindung gespeichert ✓');
             ctx.rerender();
           };
@@ -372,8 +373,8 @@ export async function elternView(_p, ctx) {
       const t = $('#ki-test', root);
       if (t) t.onclick = async () => {
         t.disabled = true; t.textContent = 'Teste …';
-        try { const a = await K.teste(); toast(`Verbindung klappt ✓ (Antwort: ${a})`); }
-        catch (e) { toast(e.message.split('\n')[0], 6000); }
+        try { const a = await K.teste((m) => { t.textContent = m; }); toast(`Verbindung klappt ✓ (Antwort: ${a})`); }
+        catch (e) { toast(e.message.split('\n')[0], 8000); }
         t.disabled = false; t.textContent = 'Verbindung testen';
       };
       const w = $('#ki-weg', root);

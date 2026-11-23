@@ -3,7 +3,9 @@
 Vokabel-Lern-App für Schülerinnen und Schüler am Gymnasium (NRW), Englisch und Latein.
 Web-App (PWA) für iPhone und iPad, alle Daten bleiben lokal auf dem Gerät. Keine KI-Anbindung, keine API-Schlüssel.
 
-**App öffnen:** https://thereal-menntos.github.io/vokabel-studio/
+**App öffnen:** https://vokabel-studio.github.io/
+
+*Umgezogen am 23.11.2026 von thereal-menntos.github.io/vokabel-studio – die alte Adresse zeigt vorerst einen Umzugshinweis.*
 
 ## So kommen die Vokabeln in die App
 
@@ -27,7 +29,7 @@ Wichtig: Safari und die Home-Bildschirm-App haben getrennte Speicher. Am besten 
 
 **Bekannte Einschränkung iPhone/iPad:** Die Spracheingabe der App liefert unter iOS nur beim ersten Versuch nach dem App-Start Ton (Gerätetests Nov. 2026). Auf iOS wird deshalb das Tastatur-Diktat empfohlen; der App-Mikrofonknopf ist dort ausgeblendet.
 
-Testversion: https://thereal-menntos.github.io/vokabel-studio-beta/ (Branch `beta`, eigene Daten)
+Testversion: https://vokabel-studio.github.io/beta/ (Branch `beta`, eigene Daten)
 
 ## Technik
 

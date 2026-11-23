@@ -1,7 +1,7 @@
 // Lernbereich: Auswahl (Hub) und Übungs-Sitzung mit allen Modi
 import * as db from './db.js';
 import { fach as getFach, lehrwerkName, WORTART_NAMEN } from './faecher.js';
-import { esc, $, $$, toast, copyText, plural, uid } from './util.js';
+import { esc, $, $$, toast, copyText, plural, uid, isIOS } from './util.js';
 import { sprich, hoere, sttKlasse } from './speech.js';
 import * as L from './lernen.js';
 import { formenAufgaben, tabelleHtml } from './latein.js';
@@ -296,6 +296,7 @@ async function tippItem(it, ctx) {
       placeholder="Antwort eingeben" value="${esc(fb?.antwort || '')}" ${fb ? 'readonly' : ''} enterkeyhint="done">
     ${it.fach.formenTyp === 'latein' && it.richtung === 'df' ? '<p class="muted small">Längenzeichen (ā, ē …) musst du nicht tippen.</p>' : ''}
     ${!it.test && !mic && it.richtung === 'df' && it.fach.formenTyp === 'latein' && sttKlasse() ? '<p class="muted small">🎤 Für Latein gibt es keine Spracheingabe – bitte tippen.</p>' : ''}
+    ${!it.test && !fb && isIOS() && antwortSprache ? '<p class="muted small">Tipp: Du kannst auch mit dem 🎤 auf der iPhone-Tastatur diktieren.</p>' : ''}
     ${fb ? feedbackHtml(fb, loes, it) : `
       <div class="btn-row">
         ${mic ? '<button class="btn secondary" id="t-mic" style="flex:0 0 72px">🎤</button>' : ''}
@@ -337,6 +338,7 @@ async function tippItem(it, ctx) {
           const r = await lauf; lauf = null;
           m.textContent = '🎤'; inp.placeholder = 'Antwort eingeben';
           if (r.ok) { inp.value = r.text; const treffer = r.alternativen.find((a) => L.pruefeAntwort(a, loes).ergebnis === 'richtig'); pruefen(treffer || r.text); }
+          else if (r.keinTon && isIOS()) toast('Das iPhone gibt das Mikrofon gerade nicht frei. Tipp: Tippe ins Antwortfeld und nutze das 🎤 auf der Tastatur.', 6000);
           else toast(r.grund + ' Du kannst auch tippen.');
         };
       }

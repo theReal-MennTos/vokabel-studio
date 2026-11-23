@@ -41,12 +41,15 @@
     <div class="card">
       <h3 style="margin-top:0">🎤 Spracheingabe</h3>
       <div id="stt-da" class="small"></div>
+      <label style="margin-top:10px">Variante</label>
+      <div class="btn-row" id="stt-var" style="margin-top:0"></div>
+      <p class="small muted" id="stt-var-text"></p>
       <div class="btn-row">
         <button class="btn soft" data-stt="en-GB">Englisch sprechen</button>
         <button class="btn soft" data-stt="de-DE">Deutsch sprechen</button>
       </div>
       <p class="small muted">Nach dem Tippen z. B. „mountain“ bzw. „Berg“ sagen. Die App stoppt nach kurzer Stille selbst – oder nochmal tippen. Gern 2–3 Mal pro Sprache probieren.</p>
-      <p class="small muted">Version Spracheingabe: 3</p>
+      <p class="small muted">Version Spracheingabe: 4</p>
       <div class="ergebnis small" id="stt-erg"></div>
     </div>
 
@@ -69,7 +72,7 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script type="module">
-    import { stimmen, sprich, hoere, sttKlasse, ttsVerfuegbar } from './js/speech.js';
+    import { stimmen, sprich, hoere, sttKlasse, ttsVerfuegbar, VARIANTEN, setzeVariante, aktuelleVariante } from './js/speech.js';
     import { copyText, toast, isStandalone, isIOS, esc } from './js/util.js';
 
     const B = {};   // Bericht
@@ -94,6 +97,12 @@
     document.getElementById('geraet').innerHTML = Object.entries(g).map(([k, v]) => row(k, v)).join('');
     Object.entries(g).forEach(([k, v]) => setze(k, v));
     setze('User-Agent', ua);
+    const zeigeVarianten = () => {
+      document.getElementById('stt-var').innerHTML = Object.keys(VARIANTEN).map((v) => `<button class="btn ${v === aktuelleVariante() ? '' : 'secondary'}" data-var="${v}" style="flex:1 1 60px">${v}</button>`).join('');
+      document.getElementById('stt-var-text').textContent = aktuelleVariante() + ': ' + VARIANTEN[aktuelleVariante()];
+      document.querySelectorAll('[data-var]').forEach((b) => b.onclick = () => { setzeVariante(b.dataset.var); zeigeVarianten(); });
+    };
+    zeigeVarianten();
     document.getElementById('stt-da').textContent = sttKlasse() ? 'Spracheingabe-Schnittstelle gefunden.' : '❌ Diese Umgebung hat keine Spracheingabe-Schnittstelle. In der App wird dann getippt.';
 
     stimmen().then((v) => {
@@ -135,7 +144,7 @@
         const s = ((performance.now() - t0) / 1000).toFixed(1);
         const txt = r.ok ? `✓ ${b.dataset.stt}: „${r.text}“ (${s} s)${r.alternativen.length > 1 ? ' – Alternativen: ' + r.alternativen.slice(1).join(', ') : ''}` : `❌ ${b.dataset.stt}: ${r.grund} (${s} s)`;
         erg.textContent = txt;
-        const k = 'STT ' + b.dataset.stt;
+        const k = 'STT ' + b.dataset.stt + ' Var. ' + aktuelleVariante();
         const mitLog = txt + (r.protokoll?.length ? ' [' + r.protokoll.join('; ') + ']' : '');
         setze(k, B[k] ? B[k] + ' | ' + mitLog : mitLog);   // mehrere Versuche sammeln
       };

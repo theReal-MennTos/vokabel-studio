@@ -50,7 +50,7 @@
       </div>
       <div class="msg info small"><strong>So geht der Test:</strong> Knopf antippen, <strong>einmal</strong> „Berg“ (bzw. „mountain“) sagen und warten, bis das Ergebnis erscheint. Dann <strong>ohne Neustart</strong> gleich wieder antippen – insgesamt 3 Versuche pro Variante. Der Bericht bleibt auch nach einem Neustart erhalten.</div>
       <div class="ergebnis" id="stt-erg" style="font-size:17px"></div>
-      <p class="small muted">Version Spracheingabe: 5</p>
+      <p class="small muted">Version Spracheingabe: 6</p>
     </div>
 
     <div class="card">
@@ -158,6 +158,10 @@
         const n = versuche(b.dataset.stt);
         erg.innerHTML = esc(txt) + '<br><strong>' + (n < 3 ? `👉 Jetzt gleich noch einmal antippen (Versuch ${n + 1} von 3).` : `✅ Variante ${aktuelleVariante()} fertig. Nächste Variante wählen – oder Bericht kopieren.`) + '</strong>';
         beschrifte();
+        if (aktuelleVariante() === 'F') {
+          erg.innerHTML += '<br>🔄 Seite lädt neu … danach den Knopf wieder antippen.';
+          setTimeout(() => location.reload(), 1800);
+        }
       };
     });
 

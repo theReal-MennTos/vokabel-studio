@@ -5,7 +5,34 @@ import { esc, uid, toast, $, $$, datum, plural, isStandalone, isIOS } from './ut
 import { sprich, ttsVerfuegbar } from './speech.js';
 import * as backup from './backup.js';
 import { pruefe, speichere } from './import.js';
-import { APP_VERSION } from './config.js';
+import { APP_VERSION, ALTE_ADRESSE, NEUE_ADRESSE } from './config.js';
+
+// ---------- Umzug auf die neue Adresse ----------
+function umzugKarte() {
+  if (!ALTE_ADRESSE) return '';
+  return `<div class="card umzug">
+    <h3 style="margin-top:0">📦 Vokabel-Studio ist umgezogen</h3>
+    <p>Die App hat eine neue Adresse: <strong>${esc(NEUE_ADRESSE.replace('https://', ''))}</strong><br>
+    Deine Daten ziehen <strong>nicht</strong> automatisch mit. So geht der Umzug:</p>
+    <ol style="padding-left:22px">
+      <li>Hier auf <strong>„Sicherung erstellen“</strong> tippen und die Datei speichern (z. B. in „Dateien“ / „Downloads“).</li>
+      <li><strong>„Neue App öffnen“</strong> tippen und sie wieder zum Home-Bildschirm hinzufügen.</li>
+      <li>In der neuen App: <strong>„Sicherung laden“</strong> und die Datei auswählen.</li>
+    </ol>
+    <div class="btn-row"><button class="btn" id="umzug-sichern">💾 1. Sicherung erstellen</button>
+      <a class="btn secondary" href="${esc(NEUE_ADRESSE)}" target="_blank" rel="noopener">2. Neue App öffnen ›</a></div>
+    <p class="muted small">Ein eingetragener KI-Schlüssel steckt nicht in der Sicherung und muss in der neuen App neu eingetragen werden. Die alte App danach bitte vom Home-Bildschirm löschen.</p>
+  </div>`;
+}
+function bindUmzug(root) {
+  const b = root.querySelector('#umzug-sichern');
+  if (!b) return;
+  b.onclick = async () => {
+    const S = await import('./sicherung.js');
+    try { const r = await S.sichereAlsDatei(); if (r !== 'abgebrochen') toast('Sicherung erstellt ✓ Jetzt die neue App öffnen.', 4000); }
+    catch (e) { toast('Hat nicht geklappt: ' + e.message); }
+  };
+}
 import { KATEGORIEN, INI_FARBEN, avatarHtml, istInitialen, parseInitialen, initialen, zufall } from './avatare.js';
 import { DESIGNS, setzeDesign } from './design.js';
 import * as fx from './effekte.js';
@@ -38,9 +65,14 @@ export async function startView(_p, ctx) {
 export async function profileView(_p, ctx) {
   const profile = (await db.all('profile')).sort((a, b) => a.name.localeCompare(b.name));
   const html = `
+    ${umzugKarte()}
     ${profile.length ? '<p class="muted">Wer lernt jetzt?</p>' : `
       <div class="card"><h2 style="margin-top:0">Willkommen bei Vokabel-Studio! 👋</h2>
-      <p>Hier lernst du die Vokabeln aus deinem Schulbuch. Leg zuerst ein Profil an – jedes Kind auf diesem Gerät bekommt sein eigenes.</p></div>`}
+      <p>Hier lernst du die Vokabeln aus deinem Schulbuch. Leg zuerst ein Profil an – jedes Kind auf diesem Gerät bekommt sein eigenes.</p>
+      <p class="small"><strong>Du ziehst um oder hast ein neues Gerät?</strong> Dann lade einfach deine Sicherung:</p>
+      <label class="btn secondary block" for="pv-sicherung">📂 Sicherung laden</label>
+      <input id="pv-sicherung" type="file" accept=".json,application/json" hidden>
+      <div id="pv-info"></div></div>`}
     <div class="profile-grid">
       ${profile.map((p) => `
         <button class="tile profile-tile" data-profil="${esc(p.id)}">
@@ -58,6 +90,20 @@ export async function profileView(_p, ctx) {
     title: 'Profil wählen', hideProfile: true, html,
     bind(root) {
       $$('[data-profil]', root).forEach((b) => b.onclick = () => { ctx.setzeAktivesProfil(b.dataset.profil); ctx.go('home'); });
+      bindUmzug(root);
+      const inp = $('#pv-sicherung', root);
+      if (inp) inp.onchange = async (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        const info = $('#pv-info', root);
+        let obj;
+        try { obj = JSON.parse(await f.text()); } catch { info.innerHTML = '<div class="msg err">Die Datei ist beschädigt oder keine JSON-Datei.</div>'; return; }
+        const err = backup.pruefeBackup(obj);
+        if (err) { info.innerHTML = `<div class="msg err">${esc(err)}</div>`; return; }
+        const z = backup.zusammenfassung(obj);
+        info.innerHTML = `<div class="msg info">Sicherung vom ${esc(datum(z.datum))}: ${z.profile} Profile, ${z.units} Units, ${z.vokabeln} Vokabeln.</div><button class="btn block" id="pv-go">Jetzt laden</button>`;
+        $('#pv-go', root).onclick = async () => { const n = await backup.spieleEin(obj); toast(`${n} Einträge geladen ✓`); ctx.rerender(); };
+      };
     }
   };
 }
@@ -164,6 +210,7 @@ export async function homeView(_p, ctx) {
     ? `<div class="tile soon" aria-disabled="true"><span class="tile-icon">${icon}</span><span class="tile-title">${title}</span><span class="tile-sub">${sub}</span></div>`
     : `<a class="tile" href="${href}"><span class="tile-icon">${icon}</span><span class="tile-title">${title}</span><span class="tile-sub">${sub}</span></a>`;
   const html = `
+    ${umzugKarte()}
     <h2 style="margin-top:4px">Hallo ${esc(ctx.profil.name)}! ${avatarHtml(ctx.profil.avatar, 22)}</h2>
     <p class="muted">${plural(units.length, 'Unit', 'Units')} · ${plural(voks.length, 'Vokabel', 'Vokabeln')} auf diesem Gerät</p>
     ${erinnerung ? `<a class="msg warn" href="#/backup" style="display:block;text-decoration:none">💾 ${erinnerung.seit === null ? 'Du hast noch nie gesichert.' : `Letzte Sicherung vor ${erinnerung.seit} Tagen.`} <strong>Jetzt sichern ›</strong></a>` : ''}
@@ -190,7 +237,7 @@ export async function homeView(_p, ctx) {
     </ul></div>` : ''}
     ${isIOS() && !isStandalone() ? `<div class="msg info small">📱 Tipp: In Safari auf <strong>Teilen ⬆︎ › Zum Home-Bildschirm</strong> tippen. Dann startet Vokabel-Studio wie eine App.<br>
       Achtung: Safari und die Home-Bildschirm-App speichern getrennt. Lege die App am besten <strong>vor</strong> dem ersten Einlesen auf den Home-Bildschirm.</div>` : ''}`;
-  return { title: 'Vokabel-Studio', html };
+  return { title: 'Vokabel-Studio', html, bind: bindUmzug };
 }
 
 // ---------- Bibliothek ----------

@@ -4,3 +4,8 @@ export const BETA = /beta/i.test(location.pathname);
 export const DB_NAME = BETA ? 'vokabel-studio-beta' : 'vokabel-studio';
 export const LS_PREFIX = BETA ? 'vsb-' : 'vs-';
 export const APP_VERSION = BETA ? '2.0.0-beta (Stufen 2–4)' : '2.0.0';
+
+// Umzug (23.11.2026): neue Adresse in der GitHub-Organisation „vokabel-studio“.
+// Die alte Adresse bleibt vorerst erreichbar und zeigt einen Umzugshinweis, damit man dort noch eine Sicherung machen kann.
+export const ALTE_ADRESSE = location.hostname === 'thereal-menntos.github.io';
+export const NEUE_ADRESSE = BETA ? 'https://vokabel-studio.github.io/beta/' : 'https://vokabel-studio.github.io/';

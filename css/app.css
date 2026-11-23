@@ -302,3 +302,4 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 44px; display
 
 /* hidden-Attribut gewinnt immer (z. B. gegen display:flex) */
 [hidden] { display: none !important; }
+.diktat-tipp { font-size: 15px; margin: 8px 0; padding: 10px 12px; border-radius: 12px; background: var(--primary-soft); color: var(--primary); }

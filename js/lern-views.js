@@ -288,7 +288,8 @@ async function karteItem(it, ctx) {
 async function tippItem(it, ctx) {
   const fb = S.fb;
   const antwortSprache = it.richtung === 'fd' ? 'de-DE' : it.fach.spracheingabe.fremd;
-  const mic = !it.test && sttKlasse() && antwortSprache;
+  // iOS: App-Spracheingabe klappt nur 1× pro App-Start (Gerätetests 23.11.2026, alle Varianten) → dort Tastatur-Diktat statt Knopf
+  const mic = !it.test && sttKlasse() && antwortSprache && !isIOS();
   const loes = L.loesungen(it.v, it.richtung);
   const html = `
     ${frageKarte(it)}
@@ -296,7 +297,7 @@ async function tippItem(it, ctx) {
       placeholder="Antwort eingeben" value="${esc(fb?.antwort || '')}" ${fb ? 'readonly' : ''} enterkeyhint="done">
     ${it.fach.formenTyp === 'latein' && it.richtung === 'df' ? '<p class="muted small">Längenzeichen (ā, ē …) musst du nicht tippen.</p>' : ''}
     ${!it.test && !mic && it.richtung === 'df' && it.fach.formenTyp === 'latein' && sttKlasse() ? '<p class="muted small">🎤 Für Latein gibt es keine Spracheingabe – bitte tippen.</p>' : ''}
-    ${!it.test && !fb && isIOS() && antwortSprache ? '<p class="muted small">Tipp: Du kannst auch mit dem 🎤 auf der iPhone-Tastatur diktieren.</p>' : ''}
+    ${!it.test && !fb && isIOS() && antwortSprache ? '<p class="diktat-tipp">🎤 <strong>Sprechen statt tippen:</strong> ins Feld tippen, dann auf das Mikrofon unten rechts auf der Tastatur.</p>' : ''}
     ${fb ? feedbackHtml(fb, loes, it) : `
       <div class="btn-row">
         ${mic ? '<button class="btn secondary" id="t-mic" style="flex:0 0 72px">🎤</button>' : ''}

@@ -6,6 +6,7 @@ import * as V from './views.js';
 import { importView } from './import-view.js';
 import { lernenView, uebungView } from './lern-views.js';
 import * as P from './plan-views.js';
+import * as T from './teilen-views.js';
 import { BETA, LS_PREFIX } from './config.js';
 import { setzeDesign } from './design.js';
 import { setzeAnimationen } from './effekte.js';
@@ -33,7 +34,9 @@ const ROUTES = [
   ['termin/:id', P.terminView],
   ['druck', P.druckView],
   ['erfolge', P.erfolgeView],
-  ['eltern', P.elternView]
+  ['eltern', P.elternView],
+  ['teilen', T.teilenView],
+  ['paket-laden', T.paketLadenView]
 ];
 
 function match(path) {

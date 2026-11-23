@@ -210,7 +210,8 @@ export async function bibliothekView(_p, ctx) {
   const html = `
     ${!units.length ? `<div class="card empty"><div class="big">📭</div>
       <p>Noch keine Vokabeln da.<br>Lies eine Seite aus deinem Buch ein – oder probier die App mit Beispiel-Units aus.</p>
-      <div class="btn-row"><a class="btn" href="#/import">📸 Seite einlesen</a><button class="btn secondary" id="demo-laden">Beispiel-Units laden</button></div></div>` : ''}
+      <div class="btn-row"><a class="btn" href="#/import">📸 Seite einlesen</a><button class="btn secondary" id="demo-laden">Beispiel-Units laden</button></div>
+      <div class="btn-row"><a class="btn secondary" href="#/paket-laden">📦 Vokabelpaket von jemand anderem laden</a></div></div>` : ''}
     ${faecher.map((f) => {
       const lws = lehrwerke.filter((l) => l.fachId === f.id).sort((a, b) => lehrwerkName(a).localeCompare(lehrwerkName(b)));
       return `<h2>${f.icon} ${esc(f.name)}</h2>
@@ -225,7 +226,8 @@ export async function bibliothekView(_p, ctx) {
         }).join('')}
         <li><a class="list-item" href="#/lehrwerk-neu/${f.id}"><span class="grow muted">➕ Anderes Buch hinzufügen</span></a></li>
         </ul></div>`;
-    }).join('')}`;
+    }).join('')}
+    ${units.length ? '<div class="btn-row" style="margin-top:20px"><a class="btn secondary" href="#/teilen">📦 Vokabeln teilen</a><a class="btn secondary" href="#/paket-laden">📥 Paket laden</a></div>' : ''}`;
   return {
     title: 'Meine Bücher', back: 'home', html,
     bind(root) {
@@ -582,6 +584,12 @@ export async function backupView(_p, ctx) {
       ${ordner ? '<button class="btn soft block" id="bk-ordner-jetzt" style="margin-top:10px">📁 In Sicherungsordner speichern</button>' : ''}
     </div>
 
+    <div class="card">
+      <h3 style="margin-top:0">📦 Vokabeln teilen <span class="badge">ohne Profile</span></h3>
+      <p class="small">Nur die eingelesenen Vokabeln weitergeben – ohne Profile und Lernfortschritt. Ideal für Geschwister, Freunde oder ein zweites Gerät.</p>
+      <div class="btn-row"><a class="btn soft" href="#/teilen">Paket erstellen</a><a class="btn secondary" href="#/paket-laden">Paket laden</a></div>
+    </div>
+
     <h3>Wohin speichern?</h3>
     <div class="card" style="padding:4px 14px">
       ${ANBIETER.map((a) => `<details class="anbieter"><summary>${a.icon} ${esc(a.name)}</summary><p class="small">${esc(a.schritte)}</p></details>`).join('')}
@@ -681,8 +689,14 @@ export async function backupView(_p, ctx) {
       if (au) au.onchange = async () => { await db.setMeta('autoSicherung', au.checked); toast(au.checked ? 'Automatische Sicherung an.' : 'Automatische Sicherung aus.'); };
       $('#bk-erinnerung', root).onchange = async (e) => { await db.setMeta('erinnerungTage', +e.target.value); toast('Gespeichert.'); };
 
-      const zeigeLaden = (obj) => {
+      const zeigeLaden = async (obj) => {
         const info = $('#bk-info', root);
+        if (obj?.format === 'vokabel-studio-paket') {
+          const T = await import('./teilen-views.js');
+          T.paketVormerken(obj);
+          ctx.go('paket-laden');
+          return;
+        }
         const err = backup.pruefeBackup(obj);
         if (err) { info.innerHTML = `<div class="msg err">${esc(err)}${obj?.schema ? '<br>Das sieht nach einer Chatbot-Antwort aus – die gehört in „Vokabelseite einlesen“.' : ''}</div>`; return; }
         const z = backup.zusammenfassung(obj);

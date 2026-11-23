@@ -21,9 +21,13 @@ Wichtig: Safari und die Home-Bildschirm-App haben getrennte Speicher. Am besten 
 | Stufe | Inhalt | Status |
 |---|---|---|
 | 1 | Profile, Import mit Prüfung und Kontrollansicht, Bibliothek, Lernkarten-Ansicht, Backup, Gerätetest | ✅ |
-| 2 | Lernmodi: Abfrage beide Richtungen, Multiple Choice, Satzbau, Latein-Formen, Vorlesen/Mikrofon | geplant |
-| 3 | Wiederholungsplan, Termin der Vokabelarbeit, Abschlusstest, PDF | geplant |
-| 4 | Punkte, Serien, Abzeichen, Eltern-Ansicht | geplant |
+| 2 | Lernkarten, Abfrage beide Richtungen, Multiple Choice, Satzbau, eigene Sätze, Latein-Formen, Vorlesen | ✅ |
+| 3 | Wiederholungsplan, Termin der Vokabelarbeit, Abschlusstest, Druck/PDF | ✅ |
+| 4 | Punkte, Serien, Abzeichen, Eltern-Ansicht, Sicherung (Cloud/Ordner), dunkler Modus, Animationen | ✅ |
+
+**Bekannte Einschränkung iPhone/iPad:** Die Spracheingabe der App liefert unter iOS nur beim ersten Versuch nach dem App-Start Ton (Gerätetests Nov. 2026). Auf iOS wird deshalb das Tastatur-Diktat empfohlen; der App-Mikrofonknopf ist dort ausgeblendet.
+
+Testversion: https://thereal-menntos.github.io/vokabel-studio-beta/ (Branch `beta`, eigene Daten)
 
 ## Technik
 

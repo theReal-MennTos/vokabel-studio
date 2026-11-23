@@ -2,7 +2,7 @@
 import * as db from './db.js';
 import { fach as getFach, lehrwerkName, WORTART_NAMEN } from './faecher.js';
 import { esc, $, $$, toast, copyText, plural, uid, isIOS } from './util.js';
-import { sprich, hoere, sttKlasse } from './speech.js';
+import { sprich, hoere, sttKlasse, mikroVerbraucht } from './speech.js';
 import * as L from './lernen.js';
 import { formenAufgaben, tabelleHtml } from './latein.js';
 import { nachSitzung, nachTest } from './belohnung.js';
@@ -333,6 +333,12 @@ async function tippItem(it, ctx) {
         let lauf = null;
         m.onclick = async () => {
           if (lauf) { lauf.stop(); return; }
+          // iOS: Spracherkennung klappt nur 1× pro App-Start → dann direkt Tastatur-Diktat anbieten
+          if (mikroVerbraucht()) {
+            inp.focus();
+            toast('Tippe jetzt auf das 🎤 unten auf der Tastatur und sprich. (Das iPhone erlaubt die App-Spracheingabe nur einmal pro Start.)', 6000);
+            return;
+          }
           m.textContent = '⏹'; inp.placeholder = 'Ich höre zu …';
           lauf = hoere(antwortSprache, { onZwischen: (t) => { inp.value = t; } });
           const r = await lauf; lauf = null;

@@ -48,9 +48,9 @@
         <button class="btn soft" data-stt="en-GB">Englisch sprechen</button>
         <button class="btn soft" data-stt="de-DE">Deutsch sprechen</button>
       </div>
-      <p class="small muted">Nach dem Tippen z. B. „mountain“ bzw. „Berg“ sagen. Die App stoppt nach kurzer Stille selbst – oder nochmal tippen. Gern 2–3 Mal pro Sprache probieren.</p>
-      <p class="small muted">Version Spracheingabe: 4</p>
-      <div class="ergebnis small" id="stt-erg"></div>
+      <div class="msg info small"><strong>So geht der Test:</strong> Knopf antippen, <strong>einmal</strong> „Berg“ (bzw. „mountain“) sagen und warten, bis das Ergebnis erscheint. Dann <strong>ohne Neustart</strong> gleich wieder antippen – insgesamt 3 Versuche pro Variante. Der Bericht bleibt auch nach einem Neustart erhalten.</div>
+      <div class="ergebnis" id="stt-erg" style="font-size:17px"></div>
+      <p class="small muted">Version Spracheingabe: 5</p>
     </div>
 
     <div class="card">
@@ -67,6 +67,7 @@
       <h3 style="margin-top:0">📋 Bericht</h3>
       <pre id="bericht" class="prompt-box" style="max-height:260px"></pre>
       <button class="btn block" id="t-bericht">Bericht kopieren</button>
+      <button class="btn secondary block" id="t-leeren" style="margin-top:10px">Bericht leeren (neu anfangen)</button>
     </div>
   </main>
   <div id="toast" role="status" aria-live="polite"></div>
@@ -76,7 +77,12 @@
     import { copyText, toast, isStandalone, isIOS, esc } from './js/util.js';
 
     const B = {};   // Bericht
-    const setze = (k, v) => { B[k] = v; document.getElementById('bericht').textContent = Object.entries(B).map(([a, b]) => `${a}: ${b}`).join('\n'); };
+    const MERK = 'diag-stt';   // Spracheingabe-Ergebnisse überleben Neustarts der App
+    const gemerkt = (() => { try { return JSON.parse(localStorage.getItem(MERK) || '{}'); } catch { return {}; } })();
+    const zeige = () => { document.getElementById('bericht').textContent = [...Object.entries(B), ...Object.entries(gemerkt)].map(([a, b]) => `${a}: ${b}`).join('\n'); };
+    const setze = (k, v) => { B[k] = v; zeige(); };
+    const merke = (k, v) => { gemerkt[k] = v; try { localStorage.setItem(MERK, JSON.stringify(gemerkt)); } catch { /* egal */ } zeige(); };
+    const versuche = (lang) => (gemerkt['STT ' + lang + ' Var. ' + aktuelleVariante()] || '').split(' | ').filter(Boolean).length;
     const row = (k, v) => `<div class="row"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
 
     const ua = navigator.userAgent;
@@ -101,7 +107,12 @@
       document.getElementById('stt-var').innerHTML = Object.keys(VARIANTEN).map((v) => `<button class="btn ${v === aktuelleVariante() ? '' : 'secondary'}" data-var="${v}" style="flex:1 1 60px">${v}</button>`).join('');
       document.getElementById('stt-var-text').textContent = aktuelleVariante() + ': ' + VARIANTEN[aktuelleVariante()];
       document.querySelectorAll('[data-var]').forEach((b) => b.onclick = () => { setzeVariante(b.dataset.var); zeigeVarianten(); });
+      beschrifte();
     };
+    const beschrifte = () => document.querySelectorAll('[data-stt]').forEach((b) => {
+      const n = versuche(b.dataset.stt);
+      b.textContent = `${b.dataset.stt === 'de-DE' ? 'Deutsch' : 'Englisch'} – Versuch ${n + 1}${n < 3 ? ' von 3' : ''}`;
+    });
     zeigeVarianten();
     document.getElementById('stt-da').textContent = sttKlasse() ? 'Spracheingabe-Schnittstelle gefunden.' : '❌ Diese Umgebung hat keine Spracheingabe-Schnittstelle. In der App wird dann getippt.';
 
@@ -130,7 +141,6 @@
 
     let laufend = null;
     document.querySelectorAll('[data-stt]').forEach((b) => {
-      const label = b.textContent;
       b.onclick = async () => {
         if (laufend) { laufend.stop(); return; }   // zweites Tippen = Stopp
         const erg = document.getElementById('stt-erg');
@@ -140,13 +150,14 @@
         laufend = hoere(b.dataset.stt, { onZwischen: (t) => { erg.textContent = '🎤 … ' + t; } });
         const r = await laufend;
         laufend = null;
-        b.textContent = label;
         const s = ((performance.now() - t0) / 1000).toFixed(1);
         const txt = r.ok ? `✓ ${b.dataset.stt}: „${r.text}“ (${s} s)${r.alternativen.length > 1 ? ' – Alternativen: ' + r.alternativen.slice(1).join(', ') : ''}` : `❌ ${b.dataset.stt}: ${r.grund} (${s} s)`;
-        erg.textContent = txt;
         const k = 'STT ' + b.dataset.stt + ' Var. ' + aktuelleVariante();
         const mitLog = txt + (r.protokoll?.length ? ' [' + r.protokoll.join('; ') + ']' : '');
-        setze(k, B[k] ? B[k] + ' | ' + mitLog : mitLog);   // mehrere Versuche sammeln
+        merke(k, gemerkt[k] ? gemerkt[k] + ' | ' + mitLog : mitLog);   // mehrere Versuche sammeln, bleibt gespeichert
+        const n = versuche(b.dataset.stt);
+        erg.innerHTML = esc(txt) + '<br><strong>' + (n < 3 ? `👉 Jetzt gleich noch einmal antippen (Versuch ${n + 1} von 3).` : `✅ Variante ${aktuelleVariante()} fertig. Nächste Variante wählen – oder Bericht kopieren.`) + '</strong>';
+        beschrifte();
       };
     });
 
@@ -180,6 +191,12 @@
       else { try { await navigator.share({ files: [file] }); r = 'Teilen ✓'; } catch (e) { r = e.name === 'AbortError' ? 'Teilen-Menü erschien ✓ (abgebrochen)' : 'Teilen ❌ ' + e.message; } }
       document.getElementById('misc-erg').textContent = r;
       setze('Teilen', r);
+    };
+    document.getElementById('t-leeren').onclick = () => {
+      if (!confirm('Alle gespeicherten Spracheingabe-Ergebnisse löschen?')) return;
+      Object.keys(gemerkt).forEach((k) => delete gemerkt[k]);
+      try { localStorage.removeItem(MERK); } catch { /* egal */ }
+      zeige(); beschrifte(); toast('Bericht geleert.');
     };
     document.getElementById('t-bericht').onclick = async () => {
       toast((await copyText(document.getElementById('bericht').textContent)) ? 'Bericht kopiert.' : 'Kopieren fehlgeschlagen – bitte markieren.');

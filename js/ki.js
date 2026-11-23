@@ -23,12 +23,41 @@ export const ANBIETER = {
   }
 };
 
+// Einstellungen: mehrere Anbieter gleichzeitig möglich.
+// { haupt: 'gemini', konten: { gemini: { schluessel, modell, ausweich: [] }, groq: {…} } }
 export async function einstellungen() {
-  return (await db.getMeta('ki')) || { anbieter: 'gemini', schluessel: '', modell: '', ausweich: [] };
+  const e = await db.getMeta('ki');
+  if (!e) return { haupt: 'gemini', konten: {} };
+  if (!e.konten) {   // altes Format (ein Anbieter) übernehmen
+    return { haupt: e.anbieter || 'gemini', konten: e.schluessel ? { [e.anbieter]: { schluessel: e.schluessel, modell: e.modell, ausweich: e.ausweich || [] } } : {} };
+  }
+  return e;
 }
-export async function speichere(e) { await db.setMeta('ki', e); }
+const eingerichtet = (k) => !!(k && k.schluessel && k.modell);
+export async function speichereKonto(anbieter, konto) {
+  const e = await einstellungen();
+  e.konten[anbieter] = konto;
+  if (!eingerichtet(e.konten[e.haupt])) e.haupt = anbieter;
+  await db.setMeta('ki', e);
+}
+export async function entferneKonto(anbieter) {
+  const e = await einstellungen();
+  delete e.konten[anbieter];
+  if (e.haupt === anbieter) e.haupt = Object.keys(e.konten).find((a) => eingerichtet(e.konten[a])) || 'gemini';
+  await db.setMeta('ki', e);
+}
+export async function setzeHaupt(anbieter) { const e = await einstellungen(); e.haupt = anbieter; await db.setMeta('ki', e); }
 export async function entferne() { await db.del('meta', 'ki'); }
-export async function aktiv() { const e = await einstellungen(); return !!(e.schluessel && e.modell); }
+/** Eingerichtete Anbieter in der Reihenfolge, in der sie versucht werden (Hauptanbieter zuerst) */
+export function reihenfolge(e) {
+  const alle = Object.keys(ANBIETER).filter((a) => eingerichtet(e.konten[a]));
+  return alle.sort((a, b) => (b === e.haupt) - (a === e.haupt));
+}
+export async function aktiv() { return reihenfolge(await einstellungen()).length > 0; }
+export async function anzeigeName() {
+  const r = reihenfolge(await einstellungen());
+  return r.map((a) => ANBIETER[a].name).join(' + ');
+}
 
 // ---------- Fehler ----------
 export class KiFehler extends Error {
@@ -93,12 +122,21 @@ export function vorschlag(anbieter, liste) {
   const passend = liste.filter((m) => re.test(m.id) && m.bild !== false && !/lite|preview|exp|thinking/i.test(m.id));
   return (passend[0] || liste.find((m) => re.test(m.id)) || liste[0])?.id || '';
 }
-/** Bis zu 3 Ausweichmodelle: andere passende Modelle, Lite-Varianten zuerst (meist weniger ausgelastet) */
+/**
+ * Bis zu 4 Ausweichmodelle. Erfahrung (Test 23.11.2026): Die neuesten Vorschau-Modelle sind im Gratis-Zugang
+ * oft gleichzeitig überlastet – deshalb zuerst stabile Modelle (ohne „preview“), gern ältere Generationen.
+ */
 export function ausweichListe(anbieter, liste, gewaehlt) {
   const re = ANBIETER[anbieter].standard;
-  const kandidaten = liste.filter((m) => m.id !== gewaehlt && re.test(m.id) && m.bild !== false && !/exp|thinking/i.test(m.id));
-  kandidaten.sort((a, b) => (/lite/i.test(b.id) - /lite/i.test(a.id)) || sortiere(a, b));
-  return kandidaten.slice(0, 3).map((m) => m.id);
+  const kandidaten = liste.filter((m) => m.id !== gewaehlt && re.test(m.id) && m.bild !== false && !/exp|thinking|tts|image/i.test(m.id));
+  const stabil = (m) => !/preview/i.test(m.id);
+  const generation = (m) => (/\d+(\.\d+)?/.exec(m.id) || ['0'])[0];
+  kandidaten.sort((x, y) => (stabil(y) - stabil(x)) || sortiere(x, y));
+  // möglichst verschiedene Generationen mischen (z. B. 2.5 und 2.0), damit nicht alle gleichzeitig ausfallen
+  const out = [], gesehen = new Set();
+  for (const m of kandidaten) { const g = generation(m) + (/lite/i.test(m.id) ? 'l' : ''); if (!gesehen.has(g)) { gesehen.add(g); out.push(m.id); } }
+  for (const m of kandidaten) if (!out.includes(m.id)) out.push(m.id);
+  return out.slice(0, 4);
 }
 
 // ---------- Bild vorbereiten ----------
@@ -121,68 +159,80 @@ export function bildVorbereiten(file, maxSeite = 1800, qualitaet = 0.85) {
 }
 
 // ---------- eine Anfrage an ein bestimmtes Modell ----------
-async function anfrage(e, modell, prompt, { bilder, json, timeoutMs }) {
-  if (e.anbieter === 'gemini') {
+async function anfrage(anbieter, schluessel, modell, prompt, { bilder, json, timeoutMs }) {
+  const zuLang = () => new KiFehler('Die Antwort war zu lang und wurde abgeschnitten. Bitte weniger Vokabeln pro Foto (z. B. halbe Seite).', { status: 'inhalt' });
+  if (anbieter === 'gemini') {
     const body = {
       contents: [{ role: 'user', parts: [{ text: prompt }, ...bilder.map((b) => ({ inline_data: { mime_type: b.mime, data: b.base64 } }))] }],
       generationConfig: { temperature: 0.2, ...(json ? { responseMimeType: 'application/json' } : {}) }
     };
     const j = await hole(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modell)}:generateContent`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': e.schluessel }, body: JSON.stringify(body) }, 'gemini', { timeoutMs, modell });
+      { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': schluessel }, body: JSON.stringify(body) }, 'gemini', { timeoutMs, modell });
     const kand = j.candidates?.[0];
-    if (!kand) throw new KiFehler('Gemini hat keine Antwort geliefert' + (j.promptFeedback?.blockReason ? ` (blockiert: ${j.promptFeedback.blockReason})` : '') + '.');
-    if (kand.finishReason === 'MAX_TOKENS') throw new KiFehler('Die Antwort war zu lang und wurde abgeschnitten. Bitte weniger Vokabeln pro Foto (z. B. halbe Seite).');
+    if (!kand) throw new KiFehler('Gemini hat keine Antwort geliefert' + (j.promptFeedback?.blockReason ? ` (blockiert: ${j.promptFeedback.blockReason})` : '') + '.', { status: 'leer', uebergang: true });
+    if (kand.finishReason === 'MAX_TOKENS') throw zuLang();
     return (kand.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
   }
-  const url = e.anbieter === 'mistral' ? 'https://api.mistral.ai/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
+  const url = anbieter === 'mistral' ? 'https://api.mistral.ai/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
   const inhalt = bilder.length
-    ? [{ type: 'text', text: prompt }, ...bilder.map((b) => (e.anbieter === 'mistral'
+    ? [{ type: 'text', text: prompt }, ...bilder.map((b) => (anbieter === 'mistral'
       ? { type: 'image_url', image_url: b.dataUrl }
       : { type: 'image_url', image_url: { url: b.dataUrl } }))]
     : prompt;
   const body = { model: modell, temperature: 0.2, messages: [{ role: 'user', content: inhalt }], ...(json ? { response_format: { type: 'json_object' } } : {}) };
-  const j = await hole(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${e.schluessel}` }, body: JSON.stringify(body) }, e.anbieter, { timeoutMs, modell });
+  const j = await hole(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${schluessel}` }, body: JSON.stringify(body) }, anbieter, { timeoutMs, modell });
   const wahl = j.choices?.[0];
-  if (!wahl) throw new KiFehler('Keine Antwort erhalten.');
-  if (wahl.finish_reason === 'length') throw new KiFehler('Die Antwort war zu lang und wurde abgeschnitten. Bitte weniger Vokabeln pro Foto (z. B. halbe Seite).');
+  if (!wahl) throw new KiFehler('Keine Antwort erhalten.', { status: 'leer', uebergang: true });
+  if (wahl.finish_reason === 'length') throw zuLang();
   const c = wahl.message?.content;
   return Array.isArray(c) ? c.map((x) => x.text || '').join('') : (c || '');
 }
 
 const warte = (ms) => new Promise((r) => setTimeout(r, ms));
+const kurz = (st) => ({ 429: 'Limit erreicht', 503: 'überlastet', 500: 'Serverfehler', 502: 'Serverfehler', 504: 'Serverfehler', zeit: 'keine Antwort', netz: 'keine Verbindung', 400: 'abgelehnt', 401: 'Schlüssel ungültig', 403: 'kein Zugriff', 404: 'Modell fehlt', leer: 'leere Antwort' }[st] || `Fehler ${st}`);
 
 /**
- * Schickt Text (+ optional Bilder). Bei Überlastung: 1 Wiederholung nach 3 s, dann nächstes Modell (bei Limit/Zeitüberschreitung sofort).
- * onStatus(text) meldet Zwischenstände für die Anzeige. Rückgabe: Textantwort.
+ * Schickt Text (+ optional Bilder) an die eingerichteten Anbieter der Reihe nach (Hauptanbieter zuerst).
+ * Je Modell: bei Überlastung 1 Wiederholung nach 3 s; bei Limit/Zeitüberschreitung sofort weiter.
+ * Danach Ausweichmodelle, danach nächster Anbieter. onStatus(text) meldet Zwischenstände.
  */
 export async function frage(prompt, { bilder = [], json = false, onStatus = () => {}, timeoutMs } = {}) {
   const e = await einstellungen();
-  if (!e.schluessel || !e.modell) throw new KiFehler('Die KI ist noch nicht eingerichtet (Eltern › KI-Anbindung).');
+  const anbieterListe = reihenfolge(e);
+  if (!anbieterListe.length) throw new KiFehler('Die KI ist noch nicht eingerichtet (Eltern › KI-Anbindung).');
   const zeit = timeoutMs || (bilder.length ? 90000 : 30000);
-  const modelleListe = [e.modell, ...(e.ausweich || [])];
-  let letzterFehler;
-  for (let mi = 0; mi < modelleListe.length; mi++) {
-    const modell = modelleListe[mi];
-    if (mi > 0) onStatus(`Weiche auf ${modell} aus …`);
-    for (let versuch = 0; versuch < 2; versuch++) {
-      try {
-        const text = await anfrage(e, modell, prompt, { bilder, json, timeoutMs: zeit });
-        if (mi > 0) onStatus(`Ausgewertet mit ${modell}.`);
-        return text;
-      } catch (err) {
-        letzterFehler = err;
-        if (!(err instanceof KiFehler) || !err.uebergang) throw err;   // z. B. Schlüssel ungültig → sofort melden
-        if (err.status === 429 || err.status === 'zeit') break;         // Limit/Zeitüberschreitung → gleich nächstes Modell
-        if (versuch === 0) {
-          for (let r = 3; r > 0; r--) { onStatus(`${err.message.split('\n')[0]} Neuer Versuch in ${r} s …`); await warte(1000); }
+  const protokoll = [];
+  let erster = true;
+  for (const anbieter of anbieterListe) {
+    const konto = e.konten[anbieter];
+    const name = ANBIETER[anbieter].name;
+    for (const modell of [konto.modell, ...(konto.ausweich || [])]) {
+      if (!erster) onStatus(`Versuche ${name} (${modell}) …`);
+      erster = false;
+      let naechster = false;
+      for (let versuch = 0; versuch < 2 && !naechster; versuch++) {
+        try {
+          const text = await anfrage(anbieter, konto.schluessel, modell, prompt, { bilder, json, timeoutMs: zeit });
+          if (protokoll.length) onStatus(`Geklappt mit ${name} (${modell}).`);
+          return text;
+        } catch (err) {
+          if (!(err instanceof KiFehler) || err.status === 'inhalt') throw err;     // Inhaltsproblem: anderer Anbieter hilft nicht
+          protokoll.push(`${name} ${modell}: ${kurz(err.status)}`);
+          if (!err.uebergang) { naechster = 'anbieter'; break; }                     // Schlüssel/Zugriff → nächster Anbieter
+          if (err.status === 429 || err.status === 'zeit' || versuch === 1) { naechster = true; break; }
+          for (let r = 3; r > 0; r--) { onStatus(`${name} (${modell}) ist überlastet. Neuer Versuch in ${r} s …`); await warte(1000); }
         }
       }
+      if (naechster === 'anbieter') break;
     }
   }
-  throw new KiFehler(`${letzterFehler.message.split('\n')[0]} Auch die Ausweichmodelle haben nicht geantwortet. Bitte später noch einmal – oder den Weg über Kopieren nutzen.`, { status: letzterFehler.status });
+  const tipp = anbieterListe.length === 1
+    ? 'Tipp: Einen zweiten Anbieter (z. B. Groq) unter Eltern › KI-Anbindung einrichten – dann weicht die App automatisch aus.'
+    : 'Bitte später noch einmal versuchen.';
+  throw new KiFehler(`Kein KI-Dienst hat geantwortet. ${tipp} Oder den Weg über Kopieren nutzen.\nVersucht: ${[...new Set(protokoll)].join(' · ')}`, { status: 'alle' });
 }
 
-/** Kurzer Verbindungstest */
+/** Verbindungstest für einen Anbieter (oder die ganze Kette) */
 export async function teste(onStatus) {
   const t = await frage('Antworte nur mit dem Wort: OK', { onStatus, timeoutMs: 25000 });
   return t.trim().slice(0, 40);

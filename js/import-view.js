@@ -99,12 +99,12 @@ async function promptSchritt(ctx) {
   const lw = await db.get('lehrwerke', W.lehrwerkId);
   const text = erzeugePrompt({ fachId: W.fachId, lehrwerk: lw, unitNummer: W.unitNummer, unitTitel: W.unitTitel });
   const K = await import('./ki.js');
-  const ki = await K.einstellungen();
-  const kiAn = !!(ki.schluessel && ki.modell);
+  const kiAn = await K.aktiv();
+  const kiName = kiAn ? await K.anzeigeName() : '';
   const html = `
     ${kiAn ? `<h2 style="margin-top:0">2. Foto auswerten</h2>
     <div class="card ki-karte">
-      <p style="margin-top:0">Die KI (<strong>${esc(K.ANBIETER[ki.anbieter].name)}</strong>) liest das Foto und füllt alles automatisch aus. Mehrere Fotos derselben Unit gehen auch.</p>
+      <p style="margin-top:0">Die KI (<strong>${esc(kiName)}</strong>) liest das Foto und füllt alles automatisch aus. Mehrere Fotos derselben Unit gehen auch.</p>
       <div class="btn-row">
         <label class="btn" for="w-kamera">📷 Foto aufnehmen</label>
         <label class="btn secondary" for="w-fotos">🖼️ Fotos auswählen</label>

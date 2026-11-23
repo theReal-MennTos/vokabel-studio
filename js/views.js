@@ -36,6 +36,7 @@ function bindUmzug(root) {
 import { KATEGORIEN, INI_FARBEN, avatarHtml, istInitialen, parseInitialen, initialen, zufall } from './avatare.js';
 import { DESIGNS, setzeDesign } from './design.js';
 import * as fx from './effekte.js';
+import { STYLES, E, setzeStyle } from './styles.js';
 
 function brauchtProfil(ctx) {
   if (!ctx.profil) { ctx.go('profile'); return true; }
@@ -218,17 +219,17 @@ export async function homeView(_p, ctx) {
       <div class="check-head"><strong class="grow">Heute</strong>${heuteInfo.serie ? `<span class="badge warn">🔥 ${heuteInfo.serie}</span>` : ''}</div>
       <p style="margin:6px 0">${heuteInfo.faellig ? `<strong>${heuteInfo.faellig}</strong> Vokabeln sind fällig.` : heuteInfo.neu ? `Nichts fällig. <strong>${heuteInfo.neu}</strong> Vokabeln hast du noch nie geübt.` : 'Nichts fällig – super! 🎉'}</p>
       ${heuteInfo.termin ? `<p class="small" style="margin:6px 0">📝 <a href="#/termin/${esc(heuteInfo.termin.id)}">${esc(heuteInfo.termin.titel)}</a> ${heuteInfo.terminText}</p>` : ''}
-      <a class="btn block" href="${heuteInfo.termin && heuteInfo.terminOffen ? '#/termin/' + esc(heuteInfo.termin.id) : heuteInfo.faellig ? '#/plan' : '#/lernen'}">${heuteInfo.termin && heuteInfo.terminOffen ? '📅 Heutige Aufgaben' : (heuteInfo.faellig ? '🔁 Wiederholen' : '🃏 Lernen')}</a>
+      <a class="btn block" href="${heuteInfo.termin && heuteInfo.terminOffen ? '#/termin/' + esc(heuteInfo.termin.id) : heuteInfo.faellig ? '#/plan' : '#/lernen'}">${heuteInfo.termin && heuteInfo.terminOffen ? '📅 Heutige Aufgaben' : (heuteInfo.faellig ? '🔁 Wiederholen' : E('lernen') + ' Lernen')}</a>
     </div>` : ''}
     <div class="grid">
-      ${tile('#/lernen', '🃏', 'Lernen', 'Karten, Abfrage, Satzbau, Test')}
-      ${tile('#/plan', '📅', 'Lernplan', 'Fälliges & Vokabeltest-Termine')}
-      ${tile('#/import', '📸', 'Vokabelseite einlesen', 'Foto → KI oder Chatbot → fertig')}
-      ${tile('#/bibliothek', '📚', 'Meine Bücher', 'Units und Vokabeln ansehen')}
-      ${tile('#/erfolge', '🏆', 'Erfolge', `⭐ ${heuteInfo.punkte} Punkte · 🔥 ${heuteInfo.serie} Tage`)}
-      ${tile('#/eltern', '👪', 'Eltern', 'Lernfortschritt ansehen')}
-      ${tile('#/backup', '💾', 'Sicherung', 'Daten sichern und laden')}
-      ${tile('#/einstellungen', '⚙️', 'Einstellungen', 'Vorlesen, iPhone-Test')}
+      ${tile('#/lernen', E('lernen'), 'Lernen', 'Karten, Abfrage, Satzbau, Test')}
+      ${tile('#/plan', E('plan'), 'Lernplan', 'Fälliges & Vokabeltest-Termine')}
+      ${tile('#/import', E('import'), 'Vokabelseite einlesen', 'Foto → KI oder Chatbot → fertig')}
+      ${tile('#/bibliothek', E('buecher'), 'Meine Bücher', 'Units und Vokabeln ansehen')}
+      ${tile('#/erfolge', E('erfolge'), 'Erfolge', `${E('punkt')} ${heuteInfo.punkte} Punkte · ${E('serie')} ${heuteInfo.serie} Tage`)}
+      ${tile('#/eltern', E('eltern'), 'Eltern', 'Lernfortschritt ansehen')}
+      ${tile('#/backup', E('sicherung'), 'Sicherung', 'Daten sichern und laden')}
+      ${tile('#/einstellungen', E('einstellungen'), 'Einstellungen', 'Vorlesen, iPhone-Test')}
     </div>
     ${zuletzt.length ? `<h3>Zuletzt bearbeitet</h3><div class="card" style="padding:0"><ul class="list">
       ${zuletzt.map((u) => `<li><a class="list-item" href="#/unit/${esc(u.id)}"><span class="grow">
@@ -793,7 +794,12 @@ export async function einstellungenView(_p, ctx) {
   const html = `
     <div class="card">
       <h3 style="margin-top:0">🎨 Darstellung</h3>
-      <label>Design</label>
+      <label>Style</label>
+      <div class="style-wahl" id="st-style">${Object.entries(STYLES).map(([id, s]) => `<button class="style-karte ${(e.style || 'standard') === id ? 'on' : ''}" data-style-id="${id}">
+        <img src="${s.logo}" alt=""><strong>${esc(s.name)}</strong><small>${esc(s.kurz)}</small>
+        <span class="emo">${s.emoji.lernen}${s.emoji.erfolge}${s.emoji.punkt}</span></button>`).join('')}</div>
+      <div class="btn-row"><button class="btn soft" id="st-feier">🎉 Feier im Style ansehen</button></div>
+      <label>Hell oder dunkel</label>
       <div class="btn-row" id="st-design">${DESIGNS.map(([w, t]) => `<button class="btn ${(e.design || 'auto') === w ? '' : 'secondary'}" data-design="${w}">${w === 'dunkel' ? '🌙 ' : w === 'hell' ? '☀️ ' : '📱 '}${esc(t)}</button>`).join('')}</div>
       <label class="switch" style="margin-top:14px"><input type="checkbox" id="st-anim" ${e.animationen ? 'checked' : ''}> Animationen bei Erfolgen (Konfetti, Abzeichen, Punkte)</label>
       <div class="btn-row"><button class="btn soft" id="st-anim-test">✨ Vorschau</button></div>
@@ -843,13 +849,21 @@ export async function einstellungenView(_p, ctx) {
         p.einstellungen = {
           ...(p.einstellungen || {}), abfrageRichtung: $('#st-richtung', root).value, sprechtempo: +$('#st-tempo', root).value,
           vorlesenAutomatisch: $('#st-auto', root).checked, tagesziel: +$('#st-ziel', root).value,
-          animationen: $('#st-anim', root).checked, design: design
+          animationen: $('#st-anim', root).checked, design: design, style: stil
         };
         await db.put('profile', p);
         ctx.profil = p;
         fx.setzeAnimationen(p.einstellungen.animationen);
       };
       let design = e.design || 'auto';
+      let stil = e.style || 'standard';
+      $$('#st-style [data-style-id]', root).forEach((b) => b.onclick = async () => {
+        stil = b.dataset.styleId;
+        setzeStyle(stil);
+        await speichern();
+        ctx.rerender();
+      });
+      $('#st-feier', root).onclick = () => { fx.konfetti(2, { erzwingen: true }); setTimeout(() => fx.abzeichen({ icon: E('erfolge'), name: 'Vorschau', text: 'So feiert die App in diesem Style.' }, { erzwingen: true }), 900); };
       $$('#st-design [data-design]', root).forEach((b) => b.onclick = async () => {
         design = b.dataset.design;
         setzeDesign(design);

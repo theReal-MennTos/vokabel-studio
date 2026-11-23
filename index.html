@@ -20,6 +20,8 @@
       var d = localStorage.getItem((/beta/i.test(location.pathname) ? 'vsb-' : 'vs-') + 'design');
       if (d === 'dunkel') document.documentElement.dataset.theme = 'dark';
       else if (d === 'hell') document.documentElement.dataset.theme = 'light';
+      var st = localStorage.getItem((/beta/i.test(location.pathname) ? 'vsb-' : 'vs-') + 'style');
+      if (st && st !== 'standard') document.documentElement.dataset.style = st;
     } catch (e) { /* privat */ }
   </script>
 </head>

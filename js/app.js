@@ -6,6 +6,7 @@ import * as V from './views.js';
 import { importView } from './import-view.js';
 import { lernenView, uebungView } from './lern-views.js';
 import * as P from './plan-views.js';
+import * as T from './teilen-views.js';
 import { BETA, LS_PREFIX } from './config.js';
 import { setzeDesign } from './design.js';
 import { setzeAnimationen } from './effekte.js';
@@ -33,7 +34,9 @@ const ROUTES = [
   ['termin/:id', P.terminView],
   ['druck', P.druckView],
   ['erfolge', P.erfolgeView],
-  ['eltern', P.elternView]
+  ['eltern', P.elternView],
+  ['teilen', T.teilenView],
+  ['paket-laden', T.paketLadenView]
 ];
 
 function match(path) {
@@ -74,6 +77,7 @@ async function render() {
     const r = await treffer.view({ ...treffer.params, query }, ctx);
     if (!r) return;   // View hat umgeleitet
     document.getElementById('title').textContent = r.title || 'Vokabel-Studio';
+    if (r.logo) document.getElementById('title').insertAdjacentHTML('afterbegin', '<img src="icons/logo-96.png" class="titel-logo" alt="">');
     document.title = r.title && r.title !== 'Vokabel-Studio' ? `${r.title} – Vokabel-Studio` : 'Vokabel-Studio';
     const back = document.getElementById('btn-back');
     back.hidden = !r.back;

@@ -314,12 +314,91 @@ export async function elternView(_p, ctx) {
       ${schwer.length ? `<h4 class="muted small">SCHWIERIGSTE WÖRTER</h4><ul class="small">${schwer.map((s) => `<li>${esc(s.v.wort)} – ${esc(s.v.bedeutungen[0])} (${s.n}× falsch)</li>`).join('')}</ul>` : ''}
     </div>`;
   }));
+  const K = await import('./ki.js');
+  const ki = await K.einstellungen();
+  const reihe = K.reihenfolge(ki);
+  const kontoZeile = (id) => {
+    const k = ki.konten[id], a = K.ANBIETER[id];
+    const ok = k && k.schluessel && k.modell;
+    return `<div class="list-item" style="padding:10px 0;flex-wrap:wrap">
+      <span class="grow"><strong>${esc(a.name)}</strong>${ok && ki.haupt === id ? ' <span class="badge ok">Hauptanbieter</span>' : ''}<br>
+        <span class="small muted">${ok ? `Modell ${esc(k.modell)}${k.ausweich?.length ? ` · Ausweich: ${esc(k.ausweich.join(', '))}` : ''}` : 'nicht eingerichtet'}</span></span>
+      ${ok && ki.haupt !== id ? `<button class="btn secondary" data-haupt="${id}" style="min-height:44px;font-size:15px">Als Hauptanbieter</button>` : ''}
+      <button class="btn ${ok ? 'secondary' : 'soft'}" data-bearb="${id}" style="min-height:44px;font-size:15px">${ok ? 'Ändern' : 'Einrichten'}</button>
+      ${ok ? `<button class="btn danger" data-weg="${id}" style="min-height:44px;font-size:15px">Entfernen</button>` : ''}
+    </div>`;
+  };
   const html = `${karten.join('') || '<div class="card muted">Noch keine Profile.</div>'}
+    <div class="card" id="ki-karte">
+      <h3 style="margin-top:0">🤖 KI-Anbindung <span class="badge">optional</span></h3>
+      <p class="small">Mit eigenem, kostenlosem Zugangsschlüssel wertet die App Fotos der Vokabelseite <strong>selbst</strong> aus und prüft eigene Sätze. Schlüssel bleiben nur auf diesem Gerät und kommen <strong>nicht</strong> in die Sicherungsdatei.</p>
+      <p class="small"><strong>Tipp:</strong> Zwei Anbieter einrichten (z. B. Gemini und Groq). Ist einer überlastet, nimmt die App automatisch den anderen.</p>
+      ${reihe.length ? `<div class="msg ok small">Reihenfolge: ${reihe.map((a) => esc(K.ANBIETER[a].name)).join(' → ')}</div>` : ''}
+      <div>${Object.keys(K.ANBIETER).map(kontoZeile).join('')}</div>
+      <div id="ki-bearb"></div>
+      ${reihe.length ? '<div class="btn-row"><button class="btn secondary" id="ki-test">Verbindung testen</button></div><div id="ki-test-erg"></div>' : ''}
+      <p class="small muted">Gratis-Angebote ändern sich häufig. Der Weg über Kopieren und Einfügen bleibt immer möglich.</p>
+    </div>
     <div class="btn-row"><button class="btn secondary" id="el-zu">🔒 Schließen</button><button class="btn secondary" id="el-pinneu">PIN ändern</button></div>`;
   return {
     title: 'Eltern-Ansicht', back: 'home', html,
     bind(root) {
       $('#el-zu', root).onclick = () => { elternOffen = false; ctx.go('home'); };
+      // ----- KI-Anbindung -----
+      $$('[data-haupt]', root).forEach((b) => b.onclick = async () => { await K.setzeHaupt(b.dataset.haupt); toast('Hauptanbieter geändert.'); ctx.rerender(); });
+      $$('[data-weg]', root).forEach((b) => b.onclick = async () => {
+        if (!confirm(`${K.ANBIETER[b.dataset.weg].name} und den Schlüssel von diesem Gerät entfernen?`)) return;
+        await K.entferneKonto(b.dataset.weg); toast('Entfernt.'); ctx.rerender();
+      });
+      $$('[data-bearb]', root).forEach((b) => b.onclick = () => {
+        const anbieter = b.dataset.bearb, a = K.ANBIETER[anbieter], konto = ki.konten[anbieter] || {};
+        const box = $('#ki-bearb', root);
+        box.innerHTML = `<div class="card" style="border:2px solid var(--primary)">
+          <h4 style="margin:0 0 6px">${esc(a.name)} einrichten</h4>
+          <p class="small muted">${esc(a.daten)}</p>
+          <p class="small"><a href="${a.schluesselUrl}" target="_blank" rel="noopener">→ Hier kostenlos einen Schlüssel erzeugen</a> (Konto für Erwachsene)</p>
+          <label for="ki-key">Zugangsschlüssel (API-Key)</label>
+          <input id="ki-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Schlüssel einfügen" value="${esc(konto.schluessel || '')}">
+          <div class="btn-row"><button class="btn" id="ki-laden">Prüfen & Modelle laden</button></div>
+          <div id="ki-modelle"></div></div>`;
+        box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        $('#ki-laden', root).onclick = async () => {
+          const key = $('#ki-key', root).value.trim();
+          if (!key) { toast('Bitte zuerst den Schlüssel einfügen.'); return; }
+          const mb = $('#ki-modelle', root);
+          mb.innerHTML = '<p class="muted small"><span class="spinner"></span> Prüfe Schlüssel …</p>';
+          try {
+            const liste = await K.modelle(anbieter, key);
+            if (!liste.length) { mb.innerHTML = '<div class="msg warn small">Schlüssel gültig, aber keine passenden Modelle gefunden.</div>'; return; }
+            const vor = liste.some((m) => m.id === konto.modell) ? konto.modell : K.vorschlag(anbieter, liste);
+            const zeigeAusweich = () => { const g = $('#ki-modell', root).value; $('#ki-aus', root).textContent = 'Ausweichmodelle bei Überlastung: ' + (K.ausweichListe(anbieter, liste, g).join(', ') || 'keine'); };
+            mb.innerHTML = `<div class="msg ok small">✓ Schlüssel gültig. ${liste.length} Modelle gefunden.</div>
+              <label for="ki-modell">Hauptmodell (muss Fotos lesen können)</label>
+              <select id="ki-modell">${liste.map((m) => `<option value="${esc(m.id)}" ${m.id === vor ? 'selected' : ''}>${esc(m.name)}${m.bild === false ? ' (ohne Bild)' : ''}</option>`).join('')}</select>
+              <p class="small muted" id="ki-aus"></p>
+              <div class="btn-row"><button class="btn" id="ki-speichern">Speichern</button></div>`;
+            zeigeAusweich();
+            $('#ki-modell', root).onchange = zeigeAusweich;
+            $('#ki-speichern', root).onclick = async () => {
+              const gewaehlt = $('#ki-modell', root).value;
+              await K.speichereKonto(anbieter, { schluessel: key, modell: gewaehlt, ausweich: K.ausweichListe(anbieter, liste, gewaehlt) });
+              toast(`${a.name} gespeichert ✓`);
+              ctx.rerender();
+            };
+          } catch (e) { mb.innerHTML = `<div class="msg err small">${esc(e.message).replace(/\n/g, '<br>')}</div>`; }
+        };
+      });
+      const t = $('#ki-test', root);
+      if (t) t.onclick = async () => {
+        const erg = $('#ki-test-erg', root);
+        t.disabled = true; t.textContent = 'Teste …'; erg.innerHTML = '';
+        const verlauf = [];
+        try {
+          const a = await K.teste((m) => { t.textContent = m; verlauf.push(m); });
+          erg.innerHTML = `<div class="msg ok small">✓ Verbindung klappt (Antwort: ${esc(a)}).${verlauf.length ? '<br>' + esc(verlauf[verlauf.length - 1]) : ''}</div>`;
+        } catch (e) { erg.innerHTML = `<div class="msg err small">${esc(e.message).replace(/\n/g, '<br>')}</div>`; }
+        t.disabled = false; t.textContent = 'Verbindung testen';
+      };
       $('#el-pinneu', root).onclick = async () => { await db.put('meta', { key: 'elternPin', value: null }); await db.del('meta', 'elternPin'); elternOffen = false; ctx.rerender(); };
     }
   };

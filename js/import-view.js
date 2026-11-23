@@ -98,8 +98,23 @@ async function auswahl(ctx) {
 async function promptSchritt(ctx) {
   const lw = await db.get('lehrwerke', W.lehrwerkId);
   const text = erzeugePrompt({ fachId: W.fachId, lehrwerk: lw, unitNummer: W.unitNummer, unitTitel: W.unitTitel });
+  const K = await import('./ki.js');
+  const kiAn = await K.aktiv();
+  const kiName = kiAn ? await K.anzeigeName() : '';
   const html = `
-    <h2 style="margin-top:0">2. Chatbot fragen</h2>
+    ${kiAn ? `<h2 style="margin-top:0">2. Foto auswerten</h2>
+    <div class="card ki-karte">
+      <p style="margin-top:0">Die KI (<strong>${esc(kiName)}</strong>) liest das Foto und füllt alles automatisch aus. Mehrere Fotos derselben Unit gehen auch.</p>
+      <div class="btn-row">
+        <label class="btn" for="w-kamera">📷 Foto aufnehmen</label>
+        <label class="btn secondary" for="w-fotos">🖼️ Fotos auswählen</label>
+      </div>
+      <input id="w-kamera" type="file" accept="image/*" capture="environment" hidden>
+      <input id="w-fotos" type="file" accept="image/*" multiple hidden>
+      <div id="w-ki-status"></div>
+      <p class="muted small">Tipp: gerade von oben, gut beleuchtet, ganze Seite drauf. Bei sehr vollen Seiten zwei Fotos (oben/unten).</p>
+    </div>
+    <details class="card"><summary>Ohne KI: über ChatGPT/Gemini kopieren</summary>` : '<h2 style="margin-top:0">2. Chatbot fragen</h2>'}
     ${W.folge ? `<div class="card">
       <p><strong>Noch eine Seite derselben Unit?</strong> Wenn der Chat mit dem Chatbot noch offen ist, reicht dieser kurze Text plus das neue Foto:</p>
       <button class="btn block" id="w-copy-folge">📋 Kurztext kopieren</button>
@@ -119,9 +134,10 @@ async function promptSchritt(ctx) {
       <p class="muted small">Tipp: Foto gerade von oben, gut beleuchtet, ganze Seite drauf. Bei sehr vollen Seiten lieber zwei Fotos (oben/unten) nacheinander einlesen.</p>
       <details><summary>Text ansehen</summary><div class="prompt-box">${esc(text)}</div></details>
     </div>
+    ${kiAn ? '</details>' : '<p class="muted small">Tipp: Mit einem kostenlosen KI-Schlüssel (Eltern › KI-Anbindung) liest die App das Foto selbst aus – ohne Kopieren.</p>'}
     <div class="btn-row">
       <button class="btn secondary" id="w-zurueck">‹ Zurück</button>
-      <button class="btn" id="w-weiter">Antwort einfügen ›</button>
+      <button class="btn ${kiAn ? 'secondary' : ''}" id="w-weiter">Antwort einfügen ›</button>
     </div>`;
   return {
     html,
@@ -131,8 +147,74 @@ async function promptSchritt(ctx) {
       if (f) f.onclick = async () => toast((await copyText(FOLGE_PROMPT)) ? 'Kopiert!' : 'Kopieren hat nicht geklappt.');
       $('#w-zurueck', root).onclick = () => weiter(ctx, 'auswahl');
       $('#w-weiter', root).onclick = () => weiter(ctx, 'einfuegen');
+      if (!kiAn) return;
+      const status = $('#w-ki-status', root);
+      const auswerten = async (dateien) => {
+        if (!dateien.length) return;
+        const roh = [], daten = [];
+        try {
+          for (let i = 0; i < dateien.length; i++) {
+            status.innerHTML = `<div class="msg info"><span class="spinner"></span> Foto ${i + 1} von ${dateien.length} wird ausgewertet … (dauert meist 10–40 Sekunden)</div>`;
+            const bild = await K.bildVorbereiten(dateien[i]);
+            const antwort = await K.frage(text, { bilder: [bild], json: true, onStatus: (m) => {
+              status.innerHTML = `<div class="msg info"><span class="spinner"></span> Foto ${i + 1} von ${dateien.length}: ${esc(m)}</div>`;
+            } });
+            roh.push(antwort);
+            const p1 = parseAntwort(antwort);
+            if (p1.fehler.length) throw new Error(`Foto ${i + 1}: ${p1.fehler[0]}`);
+            daten.push(p1);
+          }
+        } catch (e) {
+          status.innerHTML = `<div class="msg err"><strong>Das hat nicht geklappt.</strong><br>${esc(e.message).replace(/\n/g, '<br>')}</div>
+            <p class="small">Du kannst es noch einmal versuchen oder unten den Weg über Kopieren nehmen.</p>`;
+          if (roh.length) W.rohtext = roh.join('\n\n');
+          return;
+        }
+        W.rohtext = roh.join('\n\n');
+        status.innerHTML = '<div class="msg ok">✓ Ausgewertet. Prüfe die Daten …</div>';
+        const zusammen = fuehreZusammen(daten.map((d) => d.data));
+        const ok = await uebernehme(zusammen, daten.flatMap((d) => d.warnungen), (fehler, warn) => {
+          status.innerHTML = meldungenHtml(fehler, warn);
+        });
+        if (ok) weiter(ctx, 'kontrolle');
+      };
+      $('#w-kamera', root).onchange = (e) => auswerten([...e.target.files]);
+      $('#w-fotos', root).onchange = (e) => auswerten([...e.target.files]);
     }
   };
+}
+
+// Mehrere KI-Antworten (je Foto) zu einer zusammenführen
+function fuehreZusammen(liste) {
+  if (liste.length === 1) return liste[0];
+  const basis = { ...liste[0], parts: [], lernsaetze: [], satzbau: [], hinweise: [], seiten: [] };
+  const parts = new Map();
+  for (const d of liste) {
+    for (const p of d.parts || []) {
+      const k = String(p.kennung || 'A').toLowerCase();
+      if (!parts.has(k)) parts.set(k, { ...p, vokabeln: [] });
+      parts.get(k).vokabeln.push(...(p.vokabeln || []));
+    }
+    basis.lernsaetze.push(...(d.lernsaetze || []));
+    basis.satzbau.push(...(d.satzbau || []));
+    basis.hinweise.push(...(d.hinweise || []));
+    basis.seiten.push(...(d.seiten || []));
+  }
+  basis.parts = [...parts.values()];
+  return basis;
+}
+
+// Gemeinsamer Weg nach dem Einlesen (KI oder Einfügen): prüfen, Doppelte markieren
+async function uebernehme(data, vorWarnungen, zeigeProbleme) {
+  const p2 = pruefe(data, { fachId: W.fachId, unitNummer: W.unitNummer });
+  if (p2.fehler.length) { W.parseFehler = p2.fehler; zeigeProbleme(p2.fehler, [...vorWarnungen, ...p2.warnungen]); return false; }
+  W.parseFehler = [];
+  W.daten = p2.daten;
+  W.warnungen = [...vorWarnungen, ...p2.warnungen];
+  const unit = W.unitId ? await db.get('units', W.unitId) : await findeUnit(W.lehrwerkId, W.unitNummer);
+  const doppelt = await markiereDoppelte(W.daten, unit);
+  if (doppelt) W.warnungen.unshift(`${plural(doppelt, 'Vokabel ist', 'Vokabeln sind')} schon vorhanden und ${doppelt === 1 ? 'wird' : 'werden'} übersprungen (grau). Du kannst stattdessen „ersetzen“ wählen.`);
+  return true;
 }
 
 // ---------- 3. Einfügen ----------
@@ -167,15 +249,8 @@ async function einfuegen(ctx) {
         W.rohtext = ta.value;
         const p1 = parseAntwort(W.rohtext);
         if (p1.fehler.length) { W.parseFehler = p1.fehler; zeigeFehler(root, p1.fehler, p1.warnungen); return; }
-        const p2 = pruefe(p1.data, { fachId: W.fachId, unitNummer: W.unitNummer });
-        if (p2.fehler.length) { W.parseFehler = p2.fehler; zeigeFehler(root, p2.fehler, [...p1.warnungen, ...p2.warnungen]); return; }
-        W.parseFehler = [];
-        W.daten = p2.daten;
-        W.warnungen = [...p1.warnungen, ...p2.warnungen];
-        const unit = W.unitId ? await db.get('units', W.unitId) : await findeUnit(W.lehrwerkId, W.unitNummer);
-        const doppelt = await markiereDoppelte(W.daten, unit);
-        if (doppelt) W.warnungen.unshift(`${plural(doppelt, 'Vokabel ist', 'Vokabeln sind')} schon vorhanden und ${doppelt === 1 ? 'wird' : 'werden'} übersprungen (grau). Du kannst stattdessen „ersetzen“ wählen.`);
-        weiter(ctx, 'kontrolle');
+        const ok = await uebernehme(p1.data, p1.warnungen, (fehler, warn) => zeigeFehler(root, fehler, warn));
+        if (ok) weiter(ctx, 'kontrolle');
       };
     }
   };

@@ -65,8 +65,14 @@ export const VARIANTEN = {
   A: 'Standard (neu starten, stop)',
   B: 'Beenden mit abort statt stop',
   C: 'Mikrofon vorher kurz öffnen und schließen',
-  D: 'Dieselbe Erkennung wiederverwenden'
+  D: 'Dieselbe Erkennung wiederverwenden',
+  E: 'Jede Erkennung in einem frischen Unterfenster',
+  F: 'Seite nach jedem Versuch neu laden (nur Gerätetest)'
 };
+// Ergebnis Gerätetest 23.11.2026 (iPhone, Home-Bildschirm): A–D funktionieren nur beim 1. Versuch nach dem App-Start.
+let erfolgeSeitLaden = 0;
+/** iOS: Nach dem ersten Erfolg liefert die Erkennung keinen Ton mehr (bis zum Neustart) → Tastatur-Diktat anbieten. */
+export function mikroVerbraucht() { return IOS && erfolgeSeitLaden >= 1 && variante !== 'E' && variante !== 'F'; }
 let variante = (() => { try { return localStorage.getItem('stt-variante') || 'A'; } catch { return 'A'; } })();
 let wiederverwendet = null;
 export function setzeVariante(v) { if (VARIANTEN[v]) { variante = v; try { localStorage.setItem('stt-variante', v); } catch { /* egal */ } } }
@@ -103,6 +109,7 @@ export function hoere(lang, opts = {}) {
       await warte(300);
     }
     let r = await versuch(K, lang, opts, stopRef);
+    if (r.ok) erfolgeSeitLaden++;
     // Sofort-Abbruch (Mikrofon belegt) → einmal neu versuchen
     if (!r.ok && r.sofort && !r.gestopptVonHand) {
       r.protokoll.push('→ zweiter Versuch');
@@ -121,9 +128,17 @@ const warte = (ms) => new Promise((res) => setTimeout(res, ms));
 
 function versuch(K, lang, { maxMs = 10000, stilleMs = 1400, startMs = 15000, onZwischen } = {}, stopRef) {
   return new Promise((resolve) => {
-    let r;
+    let r, rahmen = null;
     if (variante === 'D') { r = wiederverwendet || new K(); wiederverwendet = r; }
-    else r = new K();
+    else if (variante === 'E') {
+      rahmen = document.createElement('iframe');
+      rahmen.setAttribute('allow', 'microphone');
+      rahmen.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;border:0;left:-10px;top:-10px';
+      document.body.appendChild(rahmen);
+      const W = rahmen.contentWindow;
+      const KR = W.SpeechRecognition || W.webkitSpeechRecognition || K;
+      r = new KR();
+    } else r = new K();
     aktiv = r;
     const t0 = Date.now();
     const protokoll = [];
@@ -137,6 +152,7 @@ function versuch(K, lang, { maxMs = 10000, stilleMs = 1400, startMs = 15000, onZ
       fertig = true; clear();
       if (aktiv === r) aktiv = null;
       letztesEnde = Date.now();
+      if (rahmen) setTimeout(() => rahmen.remove(), 300);
       log('ende');
       const sofort = Date.now() - t0 < 1500 && !gehoert;
       const keinTon = mikro && !gehoert && !vonHand;

@@ -2,7 +2,7 @@
 // Bei jeder Änderung an App-Dateien VERSION erhöhen.
 // Cache-Name enthält den Pfad, damit Live- und Beta-Version sich nicht gegenseitig löschen
 const PREFIX = 'vs-' + new URL(self.registration.scope).pathname + '-';
-const VERSION = PREFIX + '2.5.2';
+const VERSION = PREFIX + '2.6.0';
 const DATEIEN = [
   './', 'index.html', 'diagnose.html', 'manifest.webmanifest',
   'css/app.css',
@@ -10,7 +10,7 @@ const DATEIEN = [
   'js/prompt.js', 'js/backup.js', 'js/speech.js', 'js/views.js', 'js/import-view.js',
   'js/config.js', 'js/lernen.js', 'js/belohnung.js', 'js/latein.js', 'js/lern-views.js', 'js/plan-views.js', 'js/sicherung.js', 'js/design.js', 'js/avatare.js', 'js/effekte.js', 'js/ki.js', 'js/pakete.js', 'js/teilen-views.js',
   'demo/demo-englisch.json', 'demo/demo-latein.json',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
+  'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/logo-96.png', 'icons/logo-256.png'
 ];
 
 self.addEventListener('install', (e) => {

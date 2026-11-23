@@ -87,7 +87,7 @@ export async function profileView(_p, ctx) {
       ${profile.map((p) => `<li><a class="list-item" href="#/profil/${esc(p.id)}"><span>${avatarHtml(p.avatar, 22)}</span><span class="grow">${esc(p.name)}</span><span class="chev">›</span></a></li>`).join('')}
     </ul></div>` : ''}`;
   return {
-    title: 'Profil wählen', hideProfile: true, html,
+    title: 'Profil wählen', logo: true, hideProfile: true, html,
     bind(root) {
       $$('[data-profil]', root).forEach((b) => b.onclick = () => { ctx.setzeAktivesProfil(b.dataset.profil); ctx.go('home'); });
       bindUmzug(root);
@@ -223,7 +223,7 @@ export async function homeView(_p, ctx) {
     <div class="grid">
       ${tile('#/lernen', '🃏', 'Lernen', 'Karten, Abfrage, Satzbau, Test')}
       ${tile('#/plan', '📅', 'Lernplan', 'Fälliges & Vokabeltest-Termine')}
-      ${tile('#/import', '📸', 'Vokabelseite einlesen', 'Foto → Chatbot → hier einfügen')}
+      ${tile('#/import', '📸', 'Vokabelseite einlesen', 'Foto → KI oder Chatbot → fertig')}
       ${tile('#/bibliothek', '📚', 'Meine Bücher', 'Units und Vokabeln ansehen')}
       ${tile('#/erfolge', '🏆', 'Erfolge', `⭐ ${heuteInfo.punkte} Punkte · 🔥 ${heuteInfo.serie} Tage`)}
       ${tile('#/eltern', '👪', 'Eltern', 'Lernfortschritt ansehen')}
@@ -237,7 +237,7 @@ export async function homeView(_p, ctx) {
     </ul></div>` : ''}
     ${isIOS() && !isStandalone() ? `<div class="msg info small">📱 Tipp: In Safari auf <strong>Teilen ⬆︎ › Zum Home-Bildschirm</strong> tippen. Dann startet Vokabel-Studio wie eine App.<br>
       Achtung: Safari und die Home-Bildschirm-App speichern getrennt. Lege die App am besten <strong>vor</strong> dem ersten Einlesen auf den Home-Bildschirm.</div>` : ''}`;
-  return { title: 'Vokabel-Studio', html, bind: bindUmzug };
+  return { title: 'Vokabel-Studio', logo: true, html, bind: bindUmzug };
 }
 
 // ---------- Bibliothek ----------

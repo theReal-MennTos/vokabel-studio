@@ -6,6 +6,7 @@ import * as L from './lernen.js';
 import { starteSitzung, unitKontext } from './lern-views.js';
 import { ABZEICHEN, hole as holeBelohnung } from './belohnung.js';
 import { avatarHtml } from './avatare.js';
+import { E } from './styles.js';
 
 // ================= Lernplan =================
 
@@ -222,7 +223,7 @@ export async function erfolgeView(_p, ctx) {
   const hat = new Map(b.abzeichen.map((a) => [a.id, a]));
   const html = `
     <div class="grid">
-      <div class="card stat"><div class="big">⭐</div><div class="zahl">${b.punkte}</div><div class="muted small">Punkte</div></div>
+      <div class="card stat"><div class="big">${E('punkt')}</div><div class="zahl">${b.punkte}</div><div class="muted small">Punkte</div></div>
       <div class="card stat"><div class="big">🔥</div><div class="zahl">${b.serie.aktuell}</div><div class="muted small">Tage am Stück (Rekord ${b.serie.rekord})</div></div>
       <div class="card stat"><div class="big">🧠</div><div class="zahl">${stat.sicher}</div><div class="muted small">Vokabeln sicher</div></div>
       <div class="card stat"><div class="big">🏅</div><div class="zahl">${b.abzeichen.length}/${ABZEICHEN.length}</div><div class="muted small">Abzeichen</div></div>

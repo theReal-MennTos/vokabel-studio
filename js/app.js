@@ -9,6 +9,7 @@ import * as P from './plan-views.js';
 import * as T from './teilen-views.js';
 import { BETA, LS_PREFIX } from './config.js';
 import { setzeDesign } from './design.js';
+import { setzeStyle, style } from './styles.js';
 import { setzeAnimationen } from './effekte.js';
 import { avatarHtml } from './avatare.js';
 
@@ -70,6 +71,7 @@ async function render() {
   ctx.profil = id ? await db.get('profile', id) : null;
   if (!ctx.profil && id) setzeAktivesProfil(null);
   setzeDesign(ctx.profil?.einstellungen?.design || 'auto');
+  setzeStyle(ctx.profil?.einstellungen?.style || 'standard');
   setzeAnimationen(ctx.profil?.einstellungen?.animationen);
 
   const main = document.getElementById('app');
@@ -77,7 +79,7 @@ async function render() {
     const r = await treffer.view({ ...treffer.params, query }, ctx);
     if (!r) return;   // View hat umgeleitet
     document.getElementById('title').textContent = r.title || 'Vokabel-Studio';
-    if (r.logo) document.getElementById('title').insertAdjacentHTML('afterbegin', '<img src="icons/logo-96.png" class="titel-logo" alt="">');
+    if (r.logo) document.getElementById('title').insertAdjacentHTML('afterbegin', `<img src="${style().logo}" class="titel-logo" alt="">`);
     document.title = r.title && r.title !== 'Vokabel-Studio' ? `${r.title} – Vokabel-Studio` : 'Vokabel-Studio';
     const back = document.getElementById('btn-back');
     back.hidden = !r.back;

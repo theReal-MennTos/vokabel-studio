@@ -8,6 +8,7 @@ import { formenAufgaben, tabelleHtml } from './latein.js';
 import { nachSitzung, nachTest } from './belohnung.js';
 import { formenHtml } from './views.js';
 import * as fx from './effekte.js';
+import { E as emo } from './styles.js';
 
 // ---------- gemeinsame Daten ----------
 export async function unitKontext() {
@@ -188,7 +189,7 @@ export async function uebungView(_p, ctx) {
   const it = S.items[S.i];
   const kopf = `
     <div class="sess-head"><span>${S.i + 1} / ${S.items.length}</span><span class="grow"><span class="bar"><span style="width:${Math.round(S.i / S.items.length * 100)}%"></span></span></span>
-    ${S.cfg.modus === 'test' ? '' : `<span>⭐ ${S.punkte}</span>`}</div>`;
+    ${S.cfg.modus === 'test' ? '' : `<span>${emo('punkt')} ${S.punkte}</span>`}</div>`;
   const r = await ({ karte: karteItem, tippen: tippItem, mc: mcItem, satzbau: satzbauItem, formen: formenItem, frei: freiItem }[it.typ])(it, ctx);
   const bind = async (root) => {
     await r.bind?.(root);
@@ -575,11 +576,11 @@ async function endeView(ctx) {
   const e = einschaetzung(E.prozent);
   const html = `
     <div class="card empty">
-      <div class="big">${test ? (E.prozent >= 75 ? '🏆' : '📝') : '🎉'}</div>
+      <div class="big">${test ? (E.prozent >= 75 ? emo('test') : '📝') : emo('geschafft')}</div>
       ${test ? `<div class="prozent ${e.kl}">${E.prozent} %</div><h2 style="margin:4px 0">${esc(e.text)}</h2><p>${esc(e.satz)}</p>`
         : S.cfg.modus === 'frei' ? `<h2>Geschafft!</h2><p>${plural(E.richtig, 'eigener Satz', 'eigene Sätze')} geschrieben.</p>`
         : `<h2>Geschafft!</h2><p>${E.richtig} von ${E.gesamt} richtig${E.gesamt ? ` (${E.prozent} %)` : ''}</p>`}
-      <p><strong>⭐ ${S.punkte} Punkte</strong> gesammelt${S.maxSerie >= 3 ? ` · 🔥 beste Serie: ${S.maxSerie}` : ''}</p>
+      <p><strong>${emo('punkt')} ${S.punkte} Punkte</strong> gesammelt${S.maxSerie >= 3 ? ` · ${emo('serie')} beste Serie: ${S.maxSerie}` : ''}</p>
     </div>
     ${S.neueAbzeichen.length ? `<div class="card"><h3 style="margin-top:0">Neue Abzeichen</h3>${S.neueAbzeichen.map((a) => `<p>${a.icon} <strong>${esc(a.name)}</strong> – ${esc(a.text)}</p>`).join('')}</div>` : ''}
     ${E.schwach.length ? `<div class="card"><h3 style="margin-top:0">Schwache Vokabeln (${E.schwach.length})</h3><ul class="list">

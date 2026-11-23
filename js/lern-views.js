@@ -484,6 +484,8 @@ async function formenItem(it, ctx) {
 // ---------- Freie Sätze ----------
 async function freiItem(it, ctx) {
   const v = it.v;
+  const K = await import('./ki.js');
+  const kiAn = await K.aktiv();
   const html = `
     <div class="card flash">
       <div class="muted small">Schreib einen eigenen Satz mit:</div>
@@ -491,18 +493,36 @@ async function freiItem(it, ctx) {
       <div class="de">${esc(v.bedeutungen.join('; '))}</div>
     </div>
     <textarea id="fr-satz" style="font-family:inherit;font-size:18px;min-height:110px" placeholder="Dein Satz auf ${esc(it.fach.fremdsprache.name)} …" autocapitalize="sentences">${esc(S.freiText || '')}</textarea>
-    <div class="btn-row"><button class="btn" id="fr-copy">📋 Zum Prüfen kopieren</button></div>
+    ${kiAn ? `<div class="btn-row"><button class="btn" id="fr-ki">🤖 Von der KI prüfen lassen</button></div><div id="fr-antwort"></div>
+      <details><summary class="small">Lieber selbst im Chatbot prüfen</summary>` : ''}
+    <div class="btn-row"><button class="btn ${kiAn ? 'secondary' : ''}" id="fr-copy">📋 Zum Prüfen kopieren</button></div>
     <p class="muted small">Dann ChatGPT oder Gemini öffnen, einfügen und abschicken. Der Chatbot erklärt dir, ob der Satz stimmt.</p>
     <div class="btn-row">
       <a class="btn secondary" href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
       <a class="btn secondary" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
     </div>
+    ${kiAn ? '</details>' : ''}
     <button class="btn block" id="fr-weiter" style="margin-top:12px">Weiter ›</button>`;
   return {
     html,
     bind(root) {
       const ta = $('#fr-satz', root);
       ta.oninput = () => { S.freiText = ta.value; };
+      const pruefText = () => `Ich lerne ${it.fach.name} in der Schule (Gymnasium, Klasse ${ctx.profil.klasse || '5–7'}). Bitte prüfe meinen Satz mit dem Wort „${v.wort}“ (${v.bedeutungen.join(', ')}).
+Sag mir kurz und freundlich auf Deutsch: Ist der Satz richtig? Wenn nicht: Was ist falsch und warum? Gib mir dann eine verbesserte Version. Bitte keine langen Erklärungen, höchstens 4 Sätze, keine Formatierung mit Sternchen.
+
+Mein Satz: ${ta.value.trim()}`;
+      const kb = $('#fr-ki', root);
+      if (kb) kb.onclick = async () => {
+        if (!ta.value.trim()) { toast('Schreib zuerst einen Satz.'); return; }
+        const box = $('#fr-antwort', root);
+        kb.disabled = true; box.innerHTML = '<div class="msg info"><span class="spinner"></span> Die KI prüft deinen Satz …</div>';
+        try {
+          const a = await K.frage(pruefText());
+          box.innerHTML = `<div class="card ki-antwort">🤖 ${esc(a.trim()).replace(/\*\*/g, '').replace(/\n/g, '<br>')}</div>`;
+        } catch (e) { box.innerHTML = `<div class="msg err small">${esc(e.message).replace(/\n/g, '<br>')}</div>`; }
+        kb.disabled = false;
+      };
       $('#fr-copy', root).onclick = async () => {
         if (!ta.value.trim()) { toast('Schreib zuerst einen Satz.'); return; }
         const p = `Ich lerne ${it.fach.name} in der Schule (Gymnasium, Klasse ${ctx.profil.klasse || '5–7'}). Bitte prüfe meinen Satz mit dem Wort „${v.wort}“ (${v.bedeutungen.join(', ')}).

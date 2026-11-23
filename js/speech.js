@@ -59,6 +59,19 @@ let aktiv = null;          // laufende Erkennung
 let letztesEnde = 0;       // Zeitpunkt, an dem die letzte Erkennung endete
 const PAUSE_MS = 600;
 
+// iOS-Fehler (Gerätetest 23.11.2026): ab dem 2. Versuch meldet die Erkennung „Mikrofon an“, bekommt aber keinen Ton.
+// Zum Eingrenzen gibt es Varianten; der Gerätetest lässt sie wählen. Die Wahl wird gemerkt.
+export const VARIANTEN = {
+  A: 'Standard (neu starten, stop)',
+  B: 'Beenden mit abort statt stop',
+  C: 'Mikrofon vorher kurz öffnen und schließen',
+  D: 'Dieselbe Erkennung wiederverwenden'
+};
+let variante = (() => { try { return localStorage.getItem('stt-variante') || 'A'; } catch { return 'A'; } })();
+let wiederverwendet = null;
+export function setzeVariante(v) { if (VARIANTEN[v]) { variante = v; try { localStorage.setItem('stt-variante', v); } catch { /* egal */ } } }
+export function aktuelleVariante() { return variante; }
+
 function fuehreZusammen(results) {
   // Chrome: Ergebnisse sind Teilstücke → aneinanderhängen. iOS: oft Wiederholungen → nur Neues anhängen.
   let text = '';
@@ -85,6 +98,10 @@ export function hoere(lang, opts = {}) {
     if (aktiv) { try { aktiv.abort(); } catch { /* egal */ } aktiv = null; await warte(PAUSE_MS); }
     const seitEnde = Date.now() - letztesEnde;
     if (seitEnde < PAUSE_MS) await warte(PAUSE_MS - seitEnde);
+    if (variante === 'C' && navigator.mediaDevices?.getUserMedia) {
+      try { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach((t) => t.stop()); } catch { /* egal */ }
+      await warte(300);
+    }
     let r = await versuch(K, lang, opts, stopRef);
     // Sofort-Abbruch (Mikrofon belegt) → einmal neu versuchen
     if (!r.ok && r.sofort && !r.gestopptVonHand) {
@@ -104,12 +121,15 @@ const warte = (ms) => new Promise((res) => setTimeout(res, ms));
 
 function versuch(K, lang, { maxMs = 10000, stilleMs = 1400, startMs = 15000, onZwischen } = {}, stopRef) {
   return new Promise((resolve) => {
-    const r = new K();
+    let r;
+    if (variante === 'D') { r = wiederverwendet || new K(); wiederverwendet = r; }
+    else r = new K();
     aktiv = r;
     const t0 = Date.now();
     const protokoll = [];
     const log = (x) => protokoll.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${x}`);
-    let fertig = false, gestoppt = false, vonHand = false, gestartet = false, gehoert = false, text = '', alternativen = [], fehler = null;
+    let fertig = false, gestoppt = false, vonHand = false, gestartet = false, gehoert = false, mikro = false, text = '', alternativen = [], fehler = null;
+    log('variante ' + variante);
     const timer = {};
     const clear = () => Object.values(timer).forEach(clearTimeout);
     const ende = () => {
@@ -119,8 +139,9 @@ function versuch(K, lang, { maxMs = 10000, stilleMs = 1400, startMs = 15000, onZ
       letztesEnde = Date.now();
       log('ende');
       const sofort = Date.now() - t0 < 1500 && !gehoert;
+      const keinTon = mikro && !gehoert && !vonHand;
       if (text) resolve({ ok: true, text, alternativen: alternativen.length ? alternativen : [text], protokoll });
-      else resolve({ ok: false, sofort, gestopptVonHand: vonHand, protokoll,
+      else resolve({ ok: false, sofort, keinTon, gestopptVonHand: vonHand, protokoll,
         grund: fehler || (gehoert ? 'Nichts verstanden. Versuch es noch einmal oder tippe die Antwort.'
           : sofort ? 'Das Mikrofon war gerade belegt. Bitte noch einmal tippen.' : 'Nichts gehört. Sprich direkt nach dem Tippen, etwas lauter.') });
     };
@@ -128,7 +149,7 @@ function versuch(K, lang, { maxMs = 10000, stilleMs = 1400, startMs = 15000, onZ
       if (gestoppt) return;
       gestoppt = true;
       log('stop (' + grund + ')');
-      try { r.stop(); } catch { /* egal */ }
+      try { variante === 'B' ? r.abort() : r.stop(); } catch { /* egal */ }
       timer.nachlauf = setTimeout(ende, 1500);   // falls onend ausbleibt
     };
     stopRef.stop = () => { vonHand = true; stoppe('Knopf'); };
@@ -137,7 +158,7 @@ function versuch(K, lang, { maxMs = 10000, stilleMs = 1400, startMs = 15000, onZ
     r.continuous = !IOS;
     r.maxAlternatives = 3;
     r.onstart = () => { gestartet = true; log('start'); clearTimeout(timer.start); timer.max = setTimeout(() => stoppe('Zeit'), maxMs); };
-    r.onaudiostart = () => log('mikro an');
+    r.onaudiostart = () => { mikro = true; log('mikro an'); };
     r.onspeechstart = () => { gehoert = true; log('sprache erkannt'); };
     r.onresult = (e) => {
       gehoert = true;

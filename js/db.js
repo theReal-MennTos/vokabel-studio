@@ -1,5 +1,5 @@
 // Kleine IndexedDB-Schicht. Alle Daten bleiben auf dem Gerät.
-const DB_NAME = 'vokabel-studio';
+import { DB_NAME } from './config.js';
 const DB_VERSION = 1;
 
 // store: [keyPath, [indexName, keyPath]...]

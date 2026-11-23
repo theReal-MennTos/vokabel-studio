@@ -5,8 +5,10 @@ import { esc, uid, toast, $, $$, datum, plural, isStandalone, isIOS } from './ut
 import { sprich, ttsVerfuegbar } from './speech.js';
 import * as backup from './backup.js';
 import { pruefe, speichere } from './import.js';
-
-const AVATARE = ['🦊', '🐼', '🐯', '🦁', '🐸', '🐙', '🦄', '🐧', '🐨', '🐵', '🦖', '🐬', '🚀', '⚽', '🎸', '🌟'];
+import { APP_VERSION } from './config.js';
+import { KATEGORIEN, INI_FARBEN, avatarHtml, istInitialen, parseInitialen, initialen, zufall } from './avatare.js';
+import { DESIGNS, setzeDesign } from './design.js';
+import * as fx from './effekte.js';
 
 function brauchtProfil(ctx) {
   if (!ctx.profil) { ctx.go('profile'); return true; }
@@ -42,7 +44,7 @@ export async function profileView(_p, ctx) {
     <div class="profile-grid">
       ${profile.map((p) => `
         <button class="tile profile-tile" data-profil="${esc(p.id)}">
-          <span class="tile-icon">${esc(p.avatar)}</span>
+          <span class="tile-icon">${avatarHtml(p.avatar, 46)}</span>
           <span class="tile-title">${esc(p.name)}</span>
         </button>`).join('')}
       <a class="tile profile-tile" href="#/profil-neu">
@@ -50,7 +52,7 @@ export async function profileView(_p, ctx) {
       </a>
     </div>
     ${profile.length ? `<h3>Profile bearbeiten</h3><div class="card" style="padding:0"><ul class="list">
-      ${profile.map((p) => `<li><a class="list-item" href="#/profil/${esc(p.id)}"><span>${esc(p.avatar)}</span><span class="grow">${esc(p.name)}</span><span class="chev">›</span></a></li>`).join('')}
+      ${profile.map((p) => `<li><a class="list-item" href="#/profil/${esc(p.id)}"><span>${avatarHtml(p.avatar, 22)}</span><span class="grow">${esc(p.name)}</span><span class="chev">›</span></a></li>`).join('')}
     </ul></div>` : ''}`;
   return {
     title: 'Profil wählen', hideProfile: true, html,
@@ -63,13 +65,23 @@ export async function profileView(_p, ctx) {
 export async function profilFormView({ id }, ctx) {
   const p = id ? await db.get('profile', id) : null;
   if (id && !p) { ctx.go('profile'); return null; }
-  const d = p || { name: '', avatar: AVATARE[Math.floor(Math.random() * AVATARE.length)], fachIds: ['englisch'] };
+  const d = p || { name: '', avatar: zufall(), fachIds: ['englisch'] };
+  const ini = istInitialen(d.avatar) ? parseInitialen(d.avatar) : { text: (d.name || '').slice(0, 2).toUpperCase(), farbe: INI_FARBEN[0] };
   const html = `
     <label for="pf-name">Wie heißt du?</label>
     <input id="pf-name" type="text" maxlength="30" autocomplete="off" value="${esc(d.name)}" placeholder="Vorname">
-    <label>Dein Bild</label>
-    <div class="emoji-pick" id="pf-avatar">
-      ${AVATARE.map((a) => `<button type="button" class="${a === d.avatar ? 'on' : ''}" data-a="${a}" aria-label="Bild ${a}">${a}</button>`).join('')}
+    <label>Deine Figur</label>
+    <div class="ava-vorschau" id="pf-vorschau">${avatarHtml(d.avatar, 56)}</div>
+    <div class="ava-tabs" id="pf-tabs">
+      ${KATEGORIEN.map((k, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-tab="${i}">${esc(k.name)}</button>`).join('')}
+      <button type="button" class="chip" data-tab="ini">Initialen</button>
+    </div>
+    ${KATEGORIEN.map((k, i) => `<div class="emoji-pick" data-panel="${i}" ${i === 0 ? '' : 'hidden'}>
+      ${k.liste.map((a) => `<button type="button" class="${a === d.avatar ? 'on' : ''}" data-a="${a}" aria-label="Figur ${a}">${a}</button>`).join('')}</div>`).join('')}
+    <div data-panel="ini" hidden>
+      <label for="pf-ini">Buchstaben (max. 2)</label><input id="pf-ini" type="text" maxlength="2" value="${esc(ini.text)}" autocapitalize="characters" style="max-width:160px">
+      <label>Farbe</label>
+      <div class="emoji-pick" id="pf-farben">${INI_FARBEN.map((f) => `<button type="button" class="farbe ${f === ini.farbe ? 'on' : ''}" data-f="${f}" style="background:${f}" aria-label="Farbe ${f}"></button>`).join('')}</div>
     </div>
     <label>Deine Fächer</label>
     <div class="btn-row" id="pf-faecher">
@@ -81,9 +93,23 @@ export async function profilFormView({ id }, ctx) {
     title: p ? 'Profil bearbeiten' : 'Neues Profil', back: 'profile', hideProfile: true, html,
     bind(root) {
       let avatar = d.avatar;
-      $$('#pf-avatar button', root).forEach((b) => b.onclick = () => {
+      let farbe = ini.farbe;
+      const vorschau = () => { $('#pf-vorschau', root).innerHTML = avatarHtml(avatar, 56); };
+      $$('#pf-tabs .chip', root).forEach((c) => c.onclick = () => {
+        $$('#pf-tabs .chip', root).forEach((x) => x.classList.toggle('on', x === c));
+        $$('[data-panel]', root).forEach((pn) => { pn.hidden = pn.dataset.panel !== c.dataset.tab; });
+        if (c.dataset.tab === 'ini') { avatar = initialen($('#pf-ini', root).value || $('#pf-name', root).value, farbe); vorschau(); }
+      });
+      $$('[data-a]', root).forEach((b) => b.onclick = () => {
         avatar = b.dataset.a;
-        $$('#pf-avatar button', root).forEach((x) => x.classList.toggle('on', x === b));
+        $$('[data-a]', root).forEach((x) => x.classList.toggle('on', x === b));
+        vorschau();
+      });
+      $('#pf-ini', root).oninput = () => { avatar = initialen($('#pf-ini', root).value, farbe); vorschau(); };
+      $$('#pf-farben [data-f]', root).forEach((b) => b.onclick = () => {
+        farbe = b.dataset.f;
+        $$('#pf-farben [data-f]', root).forEach((x) => x.classList.toggle('on', x === b));
+        avatar = initialen($('#pf-ini', root).value || $('#pf-name', root).value, farbe); vorschau();
       });
       $('#pf-save', root).onclick = async () => {
         const name = $('#pf-name', root).value.trim();
@@ -92,7 +118,7 @@ export async function profilFormView({ id }, ctx) {
         if (!fachIds.length) { toast('Wähle mindestens ein Fach.'); return; }
         const rec = p ? { ...p, name, avatar, fachIds } : {
           id: uid('pr'), name, avatar, fachIds, lehrwerkIds: [], erstelltAm: new Date().toISOString(),
-          einstellungen: { abfrageRichtung: 'beide', vorlesenAutomatisch: false, sprechtempo: 0.9, tagesziel: 20 }
+          einstellungen: { abfrageRichtung: 'beide', vorlesenAutomatisch: false, sprechtempo: 0.9, tagesziel: 20, design: 'auto', animationen: false }
         };
         await db.put('profile', rec);
         if (!p) {
@@ -124,18 +150,36 @@ export async function homeView(_p, ctx) {
   const [units, voks] = await Promise.all([db.all('units'), db.all('vokabeln')]);
   const lehrwerke = new Map((await db.all('lehrwerke')).map((l) => [l.id, l]));
   const zuletzt = units.sort((a, b) => (b.geaendertAm || '').localeCompare(a.geaendertAm || '')).slice(0, 3);
+  const [{ faelligePaare, tageBis, heute: heuteIso }, { naechsterTermin }, { hole }] = await Promise.all([import('./lernen.js'), import('./plan-views.js'), import('./belohnung.js')]);
+  const { erinnerungFaellig } = await import('./sicherung.js');
+  const erinnerung = await erinnerungFaellig();
+  const [fp, termin, bel] = await Promise.all([voks.length ? faelligePaare(ctx.profil) : { faellig: [] }, naechsterTermin(ctx.profil.id), hole(ctx.profil.id)]);
+  const tb = termin ? tageBis(termin.datum) : 0;
+  const heuteInfo = {
+    faellig: fp.faellig.length, neu: fp.neuGesamt || 0, punkte: bel.punkte, serie: bel.serie.letzterLerntag ? bel.serie.aktuell : 0, termin,
+    terminText: termin ? (tb === 0 ? 'ist heute!' : tb === 1 ? 'ist morgen' : `in ${tb} Tagen`) : '',
+    terminOffen: termin?.plan?.find((d) => d.datum === heuteIso())?.aufgaben.some((a) => !a.erledigt)
+  };
   const tile = (href, icon, title, sub, soon = false) => soon
     ? `<div class="tile soon" aria-disabled="true"><span class="tile-icon">${icon}</span><span class="tile-title">${title}</span><span class="tile-sub">${sub}</span></div>`
     : `<a class="tile" href="${href}"><span class="tile-icon">${icon}</span><span class="tile-title">${title}</span><span class="tile-sub">${sub}</span></a>`;
   const html = `
-    <h2 style="margin-top:4px">Hallo ${esc(ctx.profil.name)}! ${esc(ctx.profil.avatar)}</h2>
+    <h2 style="margin-top:4px">Hallo ${esc(ctx.profil.name)}! ${avatarHtml(ctx.profil.avatar, 22)}</h2>
     <p class="muted">${plural(units.length, 'Unit', 'Units')} · ${plural(voks.length, 'Vokabel', 'Vokabeln')} auf diesem Gerät</p>
+    ${erinnerung ? `<a class="msg warn" href="#/backup" style="display:block;text-decoration:none">💾 ${erinnerung.seit === null ? 'Du hast noch nie gesichert.' : `Letzte Sicherung vor ${erinnerung.seit} Tagen.`} <strong>Jetzt sichern ›</strong></a>` : ''}
+    ${voks.length ? `<div class="card heute">
+      <div class="check-head"><strong class="grow">Heute</strong>${heuteInfo.serie ? `<span class="badge warn">🔥 ${heuteInfo.serie}</span>` : ''}</div>
+      <p style="margin:6px 0">${heuteInfo.faellig ? `<strong>${heuteInfo.faellig}</strong> Vokabeln sind fällig.` : heuteInfo.neu ? `Nichts fällig. <strong>${heuteInfo.neu}</strong> Vokabeln hast du noch nie geübt.` : 'Nichts fällig – super! 🎉'}</p>
+      ${heuteInfo.termin ? `<p class="small" style="margin:6px 0">📝 <a href="#/termin/${esc(heuteInfo.termin.id)}">${esc(heuteInfo.termin.titel)}</a> ${heuteInfo.terminText}</p>` : ''}
+      <a class="btn block" href="${heuteInfo.termin && heuteInfo.terminOffen ? '#/termin/' + esc(heuteInfo.termin.id) : heuteInfo.faellig ? '#/plan' : '#/lernen'}">${heuteInfo.termin && heuteInfo.terminOffen ? '📅 Heutige Aufgaben' : (heuteInfo.faellig ? '🔁 Wiederholen' : '🃏 Lernen')}</a>
+    </div>` : ''}
     <div class="grid">
+      ${tile('#/lernen', '🃏', 'Lernen', 'Karten, Abfrage, Satzbau, Test')}
+      ${tile('#/plan', '📅', 'Lernplan', 'Fälliges & Vokabeltest-Termine')}
       ${tile('#/import', '📸', 'Vokabelseite einlesen', 'Foto → Chatbot → hier einfügen')}
       ${tile('#/bibliothek', '📚', 'Meine Bücher', 'Units und Vokabeln ansehen')}
-      ${tile('', '🃏', 'Lernen & Abfragen', 'kommt in Stufe 2', true)}
-      ${tile('', '📅', 'Lernplan & Test', 'kommt in Stufe 3', true)}
-      ${tile('', '🏆', 'Punkte & Abzeichen', 'kommt in Stufe 4', true)}
+      ${tile('#/erfolge', '🏆', 'Erfolge', `⭐ ${heuteInfo.punkte} Punkte · 🔥 ${heuteInfo.serie} Tage`)}
+      ${tile('#/eltern', '👪', 'Eltern', 'Lernfortschritt ansehen')}
       ${tile('#/backup', '💾', 'Sicherung', 'Daten sichern und laden')}
       ${tile('#/einstellungen', '⚙️', 'Einstellungen', 'Vorlesen, iPhone-Test')}
     </div>
@@ -305,7 +349,11 @@ export async function unitView({ id }, ctx) {
       ${fach.vorlesen.hinweis ? `<div class="hinweis-latein">🇮🇹 ${esc(fach.vorlesen.hinweis)}</div>` : ''}
     </div>
     <div class="btn-row">
-      <a class="btn" href="#/vokabel/${esc(voks[0]?.id || '')}" ${voks.length ? '' : 'hidden'}>🃏 Karten durchblättern</a>
+      <a class="btn" href="#/lernen?unit=${esc(unit.id)}" ${voks.length ? '' : 'hidden'}>🎯 Lernen & Test</a>
+      <a class="btn secondary" href="#/vokabel/${esc(voks[0]?.id || '')}" ${voks.length ? '' : 'hidden'}>📖 Durchblättern</a>
+    </div>
+    <div class="btn-row">
+      <a class="btn secondary" href="#/termin-neu?unit=${esc(unit.id)}">📅 Test-Termin eintragen</a>
       <a class="btn secondary" href="#/import?lw=${esc(lw.id)}&unit=${esc(unit.id)}">📸 Weitere Seite einlesen</a>
     </div>
     ${parts.map((p) => {
@@ -327,7 +375,7 @@ export async function unitView({ id }, ctx) {
     </ul></details>` : ''}
     ${satzbau.length ? `<details class="card"><summary>Satzbau-Aufgaben (${satzbau.length})</summary><ul class="list">
       ${satzbau.map((s) => `<li class="list-item"><span class="grow">${esc(s.deutsch)}<br><span class="vok-de">→ ${esc(s.loesung)}</span></span></li>`).join('')}
-    </ul><p class="muted small">Üben kannst du sie ab Stufe 2.</p></details>` : ''}
+    </ul></details>` : ''}
     <div class="btn-row" style="margin-top:28px">
       <button class="btn secondary" id="u-titel">Titel ändern</button>
       <button class="btn danger" id="u-del">${unitWort} löschen</button>
@@ -508,23 +556,63 @@ export async function vokabelFormView({ id }, ctx) {
 
 // ---------- Backup ----------
 
+const ANBIETER = [
+  { id: 'icloud', icon: '☁️', name: 'iCloud Drive', schritte: 'Sichern › im Teilen-Menü „In Dateien sichern“ › „iCloud Drive“ wählen › Sichern.' },
+  { id: 'onedrive', icon: '🟦', name: 'OneDrive', schritte: 'OneDrive-App installieren und anmelden. Einmalig: Dateien-App › Durchsuchen › ⋯ › Bearbeiten › „OneDrive“ einschalten. Dann: Sichern › „In Dateien sichern“ › OneDrive wählen.' },
+  { id: 'dropbox', icon: '📦', name: 'Dropbox', schritte: 'Dropbox-App installieren und anmelden. Einmalig in der Dateien-App unter Durchsuchen › Bearbeiten „Dropbox“ einschalten. Dann: Sichern › „In Dateien sichern“ › Dropbox wählen.' },
+  { id: 'gdrive', icon: '🟩', name: 'Google Drive', schritte: 'Google-Drive-App installieren und anmelden, in der Dateien-App einschalten. Dann: Sichern › „In Dateien sichern“ › Google Drive wählen.' },
+  { id: 'android', icon: '🤖', name: 'Android', schritte: 'Sichern › im Teilen-Menü die Drive-, OneDrive- oder Dropbox-App wählen – oder „Speichern unter“ und einen Ordner aussuchen.' }
+];
+
 export async function backupView(_p, ctx) {
   if (brauchtProfil(ctx)) return null;
-  const letzte = await db.getMeta('letztesBackup');
+  const S = await import('./sicherung.js');
+  const [letzte, art, ordner, auto, erinnerung] = await Promise.all([
+    S.letzteSicherung(), db.getMeta('letztesBackupArt'), S.ordner(), db.getMeta('autoSicherung', false), db.getMeta('erinnerungTage', 7)
+  ]);
+  const seit = letzte ? Math.floor((Date.now() - new Date(letzte).getTime()) / 86400000) : null;
+  const artText = { ordner: 'in den Sicherungsordner', geteilt: 'über Teilen', heruntergeladen: 'als Download' }[art] || '';
+  const mobil = isIOS() || /Android/i.test(navigator.userAgent);
   const html = `
     <div class="card">
       <h3 style="margin-top:0">💾 Sicherung erstellen</h3>
-      <p>Alle Bücher, Vokabeln, Profile und Lernstände kommen in <strong>eine Datei</strong>. Speichere sie z. B. in „Dateien“ oder iCloud Drive.</p>
-      <p class="muted small">Letzte Sicherung: ${letzte ? datum(letzte) : 'noch nie'}</p>
-      <button class="btn block" id="bk-export">Sicherung erstellen</button>
+      <p>Alle Bücher, Vokabeln, Profile und Lernstände kommen in <strong>eine Datei</strong>.</p>
+      <p class="small ${seit === null || seit >= (erinnerung || 999) ? 'msg warn' : 'muted'}">Letzte Sicherung: ${letzte ? `${datum(letzte)}${seit ? ` (vor ${plural(seit, 'Tag', 'Tagen')})` : ' (heute)'} ${artText}` : 'noch nie'}</p>
+      <button class="btn block" id="bk-export">${mobil ? '📤 Sichern … (Teilen-Menü)' : '⬇️ Sicherung herunterladen'}</button>
+      ${ordner ? '<button class="btn soft block" id="bk-ordner-jetzt" style="margin-top:10px">📁 In Sicherungsordner speichern</button>' : ''}
     </div>
+
+    <h3>Wohin speichern?</h3>
+    <div class="card" style="padding:4px 14px">
+      ${ANBIETER.map((a) => `<details class="anbieter"><summary>${a.icon} ${esc(a.name)}</summary><p class="small">${esc(a.schritte)}</p></details>`).join('')}
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">📁 Sicherungsordner ${S.ORDNER_MOEGLICH ? '' : '<span class="badge">nur PC/Mac</span>'}</h3>
+      ${S.ORDNER_MOEGLICH ? `
+        <p class="small">Wähle einmal einen Ordner – am besten deinen <strong>OneDrive-, Dropbox-, Google-Drive- oder iCloud-Ordner</strong> auf dem Computer. Die App legt dort Sicherungen ab und behält die letzten 10.</p>
+        ${ordner ? `<div id="bk-status"><p class="muted small">Prüfe Sicherungsordner …</p></div>
+          <label class="switch"><input type="checkbox" id="bk-auto" ${auto ? 'checked' : ''}> Automatisch sichern (1× täglich nach dem Lernen)</label>
+          <div class="btn-row"><button class="btn secondary" id="bk-ordner">Anderen Ordner wählen</button><button class="btn secondary" id="bk-ordner-weg">Ordner entfernen</button></div>`
+        : '<button class="btn secondary block" id="bk-ordner">Ordner wählen …</button>'}`
+      : `<p class="small muted">Auf iPhone, iPad und Android erlaubt der Browser keinen festen Ordner. Nutze dort „Sichern …“ und wähle im Teilen-Menü „In Dateien sichern“ bzw. deinen Cloud-Dienst. Die App erinnert dich regelmäßig.</p>`}
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">⏰ Erinnerung</h3>
+      <label for="bk-erinnerung">Erinnern, wenn die letzte Sicherung älter ist als</label>
+      <select id="bk-erinnerung">${[[0, 'nie erinnern'], [3, '3 Tage'], [7, '7 Tage'], [14, '14 Tage'], [30, '30 Tage']].map(([v, t]) => `<option value="${v}" ${v === erinnerung ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    </div>
+
     <div class="card">
       <h3 style="margin-top:0">📂 Sicherung laden</h3>
-      <p>Lädt eine Sicherungsdatei – auch von einem anderen Gerät. Vorhandene Daten bleiben erhalten, gleiche Einträge werden aktualisiert.</p>
-      <label class="btn secondary block" for="bk-file">Datei auswählen</label>
+      <p class="small">Lädt eine Sicherung – auch von einem anderen Gerät oder aus OneDrive, Dropbox, Google Drive oder iCloud. Vorhandene Daten bleiben erhalten, gleiche Einträge werden aktualisiert.</p>
+      <label class="btn secondary block" for="bk-file">Datei auswählen …</label>
       <input id="bk-file" type="file" accept=".json,application/json" hidden>
+      ${ordner ? '<button class="btn secondary block" id="bk-aus-ordner" style="margin-top:10px">Aus Sicherungsordner laden …</button><div id="bk-liste"></div>' : ''}
       <div id="bk-info"></div>
     </div>
+
     <div class="msg info small">Warum ist das wichtig? Die Daten liegen nur auf diesem Gerät. Wird die App gelöscht oder der Safari-Verlauf geleert, sind sie weg. Außerdem haben Safari und die Home-Bildschirm-App getrennte Speicher – mit einer Sicherung kannst du umziehen.</div>
     <details class="card"><summary>Gefahrenzone</summary>
       <p>Löscht alle Daten auf diesem Gerät.</p>
@@ -533,27 +621,88 @@ export async function backupView(_p, ctx) {
   return {
     title: 'Sicherung', back: 'home', html,
     bind(root) {
-      $('#bk-export', root).onclick = async () => {
-        const data = await backup.erstelleBackup();
-        const r = await backup.speichereDatei(backup.backupDateiname(), JSON.stringify(data));
-        if (r !== 'abgebrochen') { await db.setMeta('letztesBackup', new Date().toISOString()); toast('Sicherung erstellt.'); ctx.rerender(); }
+      const fehler = (e) => { if (e?.name !== 'AbortError') toast('Hat nicht geklappt: ' + (e?.message || e)); };
+
+      // ----- Status des Sicherungsordners -----
+      const zeit = (t) => new Date(t).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const kb = (b) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
+      const STATUS = {
+        synchron: ['ok', '✓ Synchron', 'Die neueste Sicherung im Ordner enthält genau den aktuellen Stand der App.'],
+        veraltet: ['warn', '⚠ Nicht aktuell', 'Seit der neuesten Sicherung im Ordner hat sich in der App etwas geändert (gelernt, eingelesen oder bearbeitet).'],
+        leer: ['warn', '⚠ Noch keine Sicherung', 'Im Ordner liegt noch keine Vokabel-Studio-Sicherung.'],
+        keinZugriff: ['info', '🔒 Zugriff nötig', 'Der Browser fragt nach jedem Neustart einmal, ob die App den Ordner benutzen darf.'],
+        fehler: ['err', '✗ Problem', '']
       };
-      $('#bk-file', root).onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+      const zeigeStatus = async (fragen = false) => {
+        const box = $('#bk-status', root);
+        if (!box) return;
+        const st = await S.ordnerStatus({ fragen });
+        const [kl, titel, text] = STATUS[st.art] || STATUS.fehler;
+        box.innerHTML = `
+          <div class="ordner-kopf"><span class="ordner-icon">📁</span><span class="grow"><strong>${esc(st.name || '')}</strong>
+            ${st.seit ? `<br><span class="muted small">gewählt am ${esc(datum(st.seit))}</span>` : ''}</span></div>
+          <div class="msg ${kl} small"><strong>${titel}</strong><br>${esc(st.grund || text)}
+            ${st.neueste ? `<br>Neueste Sicherung: <strong>${esc(zeit(st.neueste.geaendert))}</strong> · ${kb(st.neueste.groesse)}` : ''}</div>
+          <div class="btn-row">
+            ${st.art === 'keinZugriff' ? '<button class="btn" id="bk-zugriff">Zugriff erlauben</button>' : ''}
+            ${st.art === 'veraltet' || st.art === 'leer' ? '<button class="btn" id="bk-sync">Jetzt synchronisieren</button>' : ''}
+            ${st.art !== 'keinZugriff' ? '<button class="btn secondary" id="bk-pruefen">Neu prüfen</button>' : ''}
+          </div>
+          ${st.dateien?.length ? `<details><summary>${plural(st.dateien.length, 'Sicherung', 'Sicherungen')} im Ordner</summary>
+            <ul class="small">${st.dateien.map((d) => `<li>${esc(d.name)} – ${esc(zeit(d.geaendert))}, ${kb(d.groesse)}</li>`).join('')}</ul></details>` : ''}
+          <p class="muted small">Der Browser zeigt nur den Ordnernamen, nicht den vollständigen Pfad. Ob OneDrive/Dropbox die Datei schon hochgeladen hat, siehst du im Programm des Cloud-Dienstes (Symbol in der Taskleiste bzw. Menüleiste).</p>`;
+        const z = $('#bk-zugriff', root);
+        if (z) z.onclick = () => zeigeStatus(true);
+        const s = $('#bk-sync', root);
+        if (s) s.onclick = async () => {
+          s.disabled = true; s.textContent = 'Speichere …';
+          try { const r = await S.sichereInOrdner(); toast(r.ok ? 'Synchronisiert ✓' : r.grund); } catch (e) { fehler(e); }
+          zeigeStatus();
+        };
+        const p = $('#bk-pruefen', root);
+        if (p) p.onclick = () => zeigeStatus();
+      };
+      zeigeStatus();
+      $('#bk-export', root).onclick = async () => {
+        try { const r = await S.sichereAlsDatei(); if (r !== 'abgebrochen') { toast('Sicherung erstellt.'); ctx.rerender(); } } catch (e) { fehler(e); }
+      };
+      const jetzt = $('#bk-ordner-jetzt', root);
+      if (jetzt) jetzt.onclick = async () => {
+        try { const r = await S.sichereInOrdner(); toast(r.ok ? `Gespeichert in „${r.ordner}“ ✓` : r.grund); } catch (e) { fehler(e); }
+        zeigeStatus();
+      };
+      const wahl = $('#bk-ordner', root);
+      if (wahl) wahl.onclick = async () => {
+        try { await S.waehleOrdner(); const r = await S.sichereInOrdner(); toast(r.ok ? 'Ordner gewählt, erste Sicherung gespeichert ✓' : r.grund); ctx.rerender(); } catch (e) { fehler(e); }
+      };
+      const weg = $('#bk-ordner-weg', root);
+      if (weg) weg.onclick = async () => { await S.entferneOrdner(); ctx.rerender(); };
+      const au = $('#bk-auto', root);
+      if (au) au.onchange = async () => { await db.setMeta('autoSicherung', au.checked); toast(au.checked ? 'Automatische Sicherung an.' : 'Automatische Sicherung aus.'); };
+      $('#bk-erinnerung', root).onchange = async (e) => { await db.setMeta('erinnerungTage', +e.target.value); toast('Gespeichert.'); };
+
+      const zeigeLaden = (obj) => {
         const info = $('#bk-info', root);
-        let obj;
-        try { obj = JSON.parse(await file.text()); } catch { info.innerHTML = '<div class="msg err">Die Datei ist beschädigt oder keine JSON-Datei.</div>'; return; }
         const err = backup.pruefeBackup(obj);
         if (err) { info.innerHTML = `<div class="msg err">${esc(err)}${obj?.schema ? '<br>Das sieht nach einer Chatbot-Antwort aus – die gehört in „Vokabelseite einlesen“.' : ''}</div>`; return; }
         const z = backup.zusammenfassung(obj);
         info.innerHTML = `<div class="msg info">Sicherung vom ${esc(datum(z.datum))}: ${z.profile} Profile, ${z.units} Units, ${z.vokabeln} Vokabeln.</div>
           <button class="btn block" id="bk-go">Jetzt laden</button>`;
-        $('#bk-go', root).onclick = async () => {
-          const n = await backup.spieleEin(obj);
-          toast(`${n} Einträge geladen.`);
-          ctx.go('home');
-        };
+        $('#bk-go', root).onclick = async () => { const n = await backup.spieleEin(obj); toast(`${n} Einträge geladen.`); ctx.go('home'); };
+        info.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      };
+      const lese = async (file) => {
+        try { zeigeLaden(JSON.parse(await file.text())); }
+        catch { $('#bk-info', root).innerHTML = '<div class="msg err">Die Datei ist beschädigt oder keine JSON-Datei.</div>'; }
+      };
+      $('#bk-file', root).onchange = (e) => { if (e.target.files[0]) lese(e.target.files[0]); };
+      const ausOrdner = $('#bk-aus-ordner', root);
+      if (ausOrdner) ausOrdner.onclick = async () => {
+        try {
+          const liste = await S.sicherungenImOrdner();
+          $('#bk-liste', root).innerHTML = liste.length ? liste.map((x, i) => `<button class="btn secondary block" data-i="${i}" style="margin-top:6px">${esc(x.name)}</button>`).join('') : '<p class="muted small">Keine Sicherungen im Ordner.</p>';
+          $$('#bk-liste [data-i]', root).forEach((b) => b.onclick = async () => lese(await liste[+b.dataset.i].handle.getFile()));
+        } catch (e) { fehler(e); }
       };
       $('#bk-wipe', root).onclick = async () => {
         if (!confirm('Wirklich ALLE Daten auf diesem Gerät löschen? Erstelle vorher eine Sicherung!')) return;
@@ -582,6 +731,14 @@ export async function einstellungenView(_p, ctx) {
   } catch { /* egal */ }
   const html = `
     <div class="card">
+      <h3 style="margin-top:0">🎨 Darstellung</h3>
+      <label>Design</label>
+      <div class="btn-row" id="st-design">${DESIGNS.map(([w, t]) => `<button class="btn ${(e.design || 'auto') === w ? '' : 'secondary'}" data-design="${w}">${w === 'dunkel' ? '🌙 ' : w === 'hell' ? '☀️ ' : '📱 '}${esc(t)}</button>`).join('')}</div>
+      <label class="switch" style="margin-top:14px"><input type="checkbox" id="st-anim" ${e.animationen ? 'checked' : ''}> Animationen bei Erfolgen (Konfetti, Abzeichen, Punkte)</label>
+      <div class="btn-row"><button class="btn soft" id="st-anim-test">✨ Vorschau</button></div>
+      ${window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? '<p class="muted small">Hinweis: Auf diesem Gerät ist „Bewegung reduzieren“ an. Dann bleiben Animationen aus.</p>' : ''}
+    </div>
+    <div class="card">
       <h3 style="margin-top:0">Abfrage</h3>
       <label for="st-richtung">Richtung</label>
       <select id="st-richtung">
@@ -591,6 +748,9 @@ export async function einstellungenView(_p, ctx) {
       </select>
       <label for="st-tempo">Vorlese-Tempo: <span id="st-tempo-w">${Math.round((e.sprechtempo || 0.9) * 100)} %</span></label>
       <input id="st-tempo" type="range" min="0.6" max="1.1" step="0.05" value="${e.sprechtempo || 0.9}" style="width:100%;height:44px">
+      <label class="switch" style="margin-top:10px"><input type="checkbox" id="st-auto" ${e.vorlesenAutomatisch ? 'checked' : ''}> Fremdwörter beim Abfragen automatisch vorlesen</label>
+      <label for="st-ziel">Neue Vokabeln pro Tag</label>
+      <select id="st-ziel">${[5, 10, 15, 20, 30].map((n) => `<option ${n === (e.tagesziel || 20) ? 'selected' : ''}>${n}</option>`).join('')}</select>
     </div>
     <div class="card">
       <h3 style="margin-top:0">🔊 Vorlesen testen</h3>
@@ -612,20 +772,39 @@ export async function einstellungenView(_p, ctx) {
       <p class="small">${esc(speicher || 'keine Angabe')}</p>
       <button class="btn secondary block" id="st-persist">Daten vor automatischem Löschen schützen</button>
     </div>
-    <p class="muted small" style="text-align:center">Vokabel-Studio · Version 1.0.0 (Stufe 1) · Alle Daten bleiben auf diesem Gerät.</p>`;
+    <p class="muted small" style="text-align:center">Vokabel-Studio · Version ${esc(APP_VERSION)} · Alle Daten bleiben auf diesem Gerät.</p>`;
   return {
     title: 'Einstellungen', back: 'home', html,
     bind(root) {
       bindSprechen(root, ctx);
       const speichern = async () => {
         const p = await db.get('profile', ctx.profil.id);
-        p.einstellungen = { ...(p.einstellungen || {}), abfrageRichtung: $('#st-richtung', root).value, sprechtempo: +$('#st-tempo', root).value };
+        p.einstellungen = {
+          ...(p.einstellungen || {}), abfrageRichtung: $('#st-richtung', root).value, sprechtempo: +$('#st-tempo', root).value,
+          vorlesenAutomatisch: $('#st-auto', root).checked, tagesziel: +$('#st-ziel', root).value,
+          animationen: $('#st-anim', root).checked, design: design
+        };
         await db.put('profile', p);
         ctx.profil = p;
+        fx.setzeAnimationen(p.einstellungen.animationen);
       };
+      let design = e.design || 'auto';
+      $$('#st-design [data-design]', root).forEach((b) => b.onclick = async () => {
+        design = b.dataset.design;
+        setzeDesign(design);
+        $$('#st-design [data-design]', root).forEach((x) => x.classList.toggle('secondary', x !== b));
+        await speichern();
+      });
+      $('#st-anim', root).onchange = async () => {
+        await speichern();
+        if ($('#st-anim', root).checked) fx.konfetti(1);
+      };
+      $('#st-anim-test', root).onclick = () => fx.abzeichen({ icon: '🌟', name: 'Vorschau', text: 'So sieht es aus, wenn du ein Abzeichen bekommst.' }, { erzwingen: true });
       $('#st-richtung', root).onchange = speichern;
       $('#st-tempo', root).oninput = () => { $('#st-tempo-w', root).textContent = Math.round($('#st-tempo', root).value * 100) + ' %'; };
       $('#st-tempo', root).onchange = speichern;
+      $('#st-auto', root).onchange = speichern;
+      $('#st-ziel', root).onchange = speichern;
       $('#st-persist', root).onclick = async () => {
         if (!navigator.storage?.persist) { toast('Dieser Browser unterstützt das nicht. Sichere regelmäßig!'); return; }
         const ok = await navigator.storage.persist();

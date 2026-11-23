@@ -372,17 +372,43 @@ export async function elternView(_p, ctx) {
             const liste = await K.modelle(anbieter, key);
             if (!liste.length) { mb.innerHTML = '<div class="msg warn small">Schlüssel gültig, aber keine passenden Modelle gefunden.</div>'; return; }
             const vor = liste.some((m) => m.id === konto.modell) ? konto.modell : K.vorschlag(anbieter, liste);
-            const zeigeAusweich = () => { const g = $('#ki-modell', root).value; $('#ki-aus', root).textContent = 'Ausweichmodelle bei Überlastung: ' + (K.ausweichListe(anbieter, liste, g).join(', ') || 'keine'); };
+            // Feinauswahl der Ausweichmodelle per Häkchen. Vorauswahl: bisherige Wahl (gleicher Schlüssel) oder Empfehlung.
+            let angehakt = new Set(konto.schluessel === key && konto.ausweich?.length ? konto.ausweich : K.ausweichListe(anbieter, liste, vor));
+            const zeigeAusweich = () => {
+              const g = $('#ki-modell', root).value;
+              angehakt.delete(g);
+              const empf = K.ausweichListe(anbieter, liste, g);
+              // Reihenfolge = Reihenfolge der Versuche: angehakte zuerst (in bisheriger Reihenfolge), dann Empfehlungen, dann der Rest
+              const reihenfolge = [...new Set([...[...angehakt].filter((id) => id !== g), ...empf, ...liste.map((m) => m.id)])].filter((id) => id !== g);
+              const nach = new Map(liste.map((m) => [m.id, m]));
+              $('#ki-aus', root).innerHTML = `
+                <div class="check-head" style="margin-top:12px"><strong class="grow">Ausweichmodelle bei Überlastung</strong>
+                  <button class="btn secondary" id="ki-aus-empf" style="min-height:40px;padding:4px 12px;font-size:14px">Empfehlung</button>
+                  <button class="btn secondary" id="ki-aus-keine" style="min-height:40px;padding:4px 12px;font-size:14px">keine</button></div>
+                <p class="small muted" style="margin:4px 0 6px">Die App probiert die angehakten Modelle der Reihe nach (von oben nach unten). Je mehr Modelle, desto länger kann es bei Überlastung dauern – etwa 3–6 s je Modell.</p>
+                <div class="ki-aus-liste">${reihenfolge.map((id) => { const m = nach.get(id); return `<label class="switch ki-aus-zeile">
+                  <input type="checkbox" value="${esc(id)}" ${angehakt.has(id) ? 'checked' : ''}>
+                  <span class="grow">${esc(m.name)}${m.name !== id ? ` <span class="muted small">${esc(id)}</span>` : ''}</span>
+                  ${empf.includes(id) ? '<span class="badge ok">empfohlen</span>' : ''}${/preview|exp/i.test(id) ? '<span class="badge warn">Vorschau</span>' : ''}${m.bild === false ? '<span class="badge err">ohne Bild</span>' : ''}</label>`; }).join('')}</div>
+                <p class="small" id="ki-aus-zahl"></p>`;
+              const zaehle = () => { $('#ki-aus-zahl', root).textContent = `${angehakt.size} Ausweichmodell${angehakt.size === 1 ? '' : 'e'} ausgewählt.`; };
+              $$('#ki-aus input[type=checkbox]', root).forEach((c) => c.onchange = () => { c.checked ? angehakt.add(c.value) : angehakt.delete(c.value); zaehle(); });
+              $('#ki-aus-empf', root).onclick = () => { angehakt = new Set(empf); zeigeAusweich(); };
+              $('#ki-aus-keine', root).onclick = () => { angehakt = new Set(); zeigeAusweich(); };
+              zaehle();
+            };
             mb.innerHTML = `<div class="msg ok small">✓ Schlüssel gültig. ${liste.length} Modelle gefunden.</div>
               <label for="ki-modell">Hauptmodell (muss Fotos lesen können)</label>
               <select id="ki-modell">${liste.map((m) => `<option value="${esc(m.id)}" ${m.id === vor ? 'selected' : ''}>${esc(m.name)}${m.bild === false ? ' (ohne Bild)' : ''}</option>`).join('')}</select>
-              <p class="small muted" id="ki-aus"></p>
+              <div id="ki-aus"></div>
               <div class="btn-row"><button class="btn" id="ki-speichern">Speichern</button></div>`;
             zeigeAusweich();
             $('#ki-modell', root).onchange = zeigeAusweich;
             $('#ki-speichern', root).onclick = async () => {
               const gewaehlt = $('#ki-modell', root).value;
-              await K.speichereKonto(anbieter, { schluessel: key, modell: gewaehlt, ausweich: K.ausweichListe(anbieter, liste, gewaehlt) });
+              // Reihenfolge wie angezeigt
+              const ausweich = $$('#ki-aus input[type=checkbox]', root).filter((c) => c.checked && c.value !== gewaehlt).map((c) => c.value);
+              await K.speichereKonto(anbieter, { schluessel: key, modell: gewaehlt, ausweich });
               toast(`${a.name} gespeichert ✓`);
               ctx.rerender();
             };

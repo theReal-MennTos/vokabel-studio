@@ -432,3 +432,6 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 44px; display
 .fx-wummern { animation: fx-wummern .5s ease-out 2; }
 @keyframes fx-wummern { 0%, 100% { transform: scale(1); } 30% { transform: scale(1.012); } }
 @media (prefers-reduced-motion: reduce) { .fx-blitz, .fx-wummern { animation: none !important; } }
+.ki-aus-liste { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; background: var(--bg); }
+.ki-aus-zeile { display: flex !important; align-items: center; gap: 8px; min-height: 46px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.ki-aus-zeile:last-child { border-bottom: 0; }

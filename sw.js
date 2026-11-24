@@ -2,7 +2,7 @@
 // Bei jeder Änderung an App-Dateien VERSION erhöhen.
 // Cache-Name enthält den Pfad, damit Live- und Beta-Version sich nicht gegenseitig löschen
 const PREFIX = 'vs-' + new URL(self.registration.scope).pathname + '-';
-const VERSION = PREFIX + '2.7.2';
+const VERSION = PREFIX + '2.7.3';
 const DATEIEN = [
   './', 'index.html', 'diagnose.html', 'manifest.webmanifest',
   'css/app.css',

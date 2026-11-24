@@ -42,7 +42,7 @@ const weiter = (ctx, schritt) => { W.schritt = schritt; W.halten = true; ctx.rer
 
 // ---------- 1. Auswahl ----------
 async function auswahl(ctx) {
-  const faecher = FAECHER.filter((f) => !ctx.profil.fachIds?.length || ctx.profil.fachIds.includes(f.id));
+  const faecher = FAECHER;   // immer alle Fächer anbieten – fehlende werden beim Speichern ins Profil übernommen
   const lehrwerke = (await db.byIndex('lehrwerke', 'fachId', W.fachId)).sort((a, b) => lehrwerkName(a).localeCompare(lehrwerkName(b)));
   if (!lehrwerke.find((l) => l.id === W.lehrwerkId)) W.lehrwerkId = lehrwerke[0]?.id || '';
   const units = W.lehrwerkId ? (await db.byIndex('units', 'lehrwerkId', W.lehrwerkId)).sort((a, b) => a.nummer.localeCompare(b.nummer, 'de', { numeric: true })) : [];
@@ -356,6 +356,13 @@ async function kontrolle(ctx) {
         b.disabled = true; b.textContent = 'Speichere …';
         try {
           W.ergebnis = await speichere(W.daten, { lehrwerkId: W.lehrwerkId, unitNummer: W.unitNummer, unitTitel: W.unitTitel, rohtext: W.rohtext });
+          // Fach ins Profil übernehmen, damit die Unit unter Lernen/Bücher auch erscheint
+          if (ctx.profil.fachIds?.length && !ctx.profil.fachIds.includes(W.fachId)) {
+            const p = await db.get('profile', ctx.profil.id);
+            p.fachIds = [...(p.fachIds || []), W.fachId];
+            await db.put('profile', p);
+            ctx.profil = p;
+          }
           W.unitId = W.ergebnis.unitId;
           weiter(ctx, 'fertig');
         } catch (e) {

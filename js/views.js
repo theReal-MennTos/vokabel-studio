@@ -428,12 +428,38 @@ export async function unitView({ id }, ctx) {
     </ul></details>` : ''}
     <div class="btn-row" style="margin-top:28px">
       <button class="btn secondary" id="u-titel">Titel ändern</button>
+      <button class="btn secondary" id="u-verschieben">In anderes Buch verschieben</button>
       <button class="btn danger" id="u-del">${unitWort} löschen</button>
     </div>`;
   return {
     title: `${unitWort} ${unit.nummer}`, back: `lehrwerk/${lw.id}`, html,
     bind(root) {
       bindSprechen(root, ctx);
+      $('#u-verschieben', root).onclick = async () => {
+        const alle = (await db.all('lehrwerke')).filter((l) => l.id !== lw.id).sort((a, b) => (a.fachId + lehrwerkName(a)).localeCompare(b.fachId + lehrwerkName(b)));
+        const box = document.createElement('div');
+        box.className = 'card';
+        box.innerHTML = `<h3 style="margin-top:0">In anderes Buch verschieben</h3>
+          <p class="small muted">Zum Beispiel, wenn eine Latein-Lektion versehentlich unter Englisch eingelesen wurde. Vokabeln und Lernstand bleiben erhalten.</p>
+          <select id="u-ziel">${alle.map((l) => `<option value="${esc(l.id)}">${esc(getFach(l.fachId)?.icon || '')} ${esc(getFach(l.fachId)?.name || '')} – ${esc(lehrwerkName(l))}</option>`).join('')}</select>
+          <div class="btn-row"><button class="btn" id="u-ziel-ok">Verschieben</button><button class="btn secondary" id="u-ziel-ab">Abbrechen</button></div>`;
+        $('#u-verschieben', root).closest('.btn-row').after(box);
+        box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        $('#u-ziel-ab', box).onclick = () => box.remove();
+        $('#u-ziel-ok', box).onclick = async () => {
+          const ziel = await db.get('lehrwerke', $('#u-ziel', box).value);
+          const doppelt = (await db.byIndex('units', 'lehrwerkId', ziel.id)).find((x) => x.nummer.trim().toLowerCase() === unit.nummer.trim().toLowerCase());
+          if (doppelt && !confirm(`In „${lehrwerkName(ziel)}“ gibt es schon ${unitWort} ${unit.nummer}. Trotzdem verschieben? Dann gibt es sie dort zweimal.`)) return;
+          await db.put('units', { ...unit, lehrwerkId: ziel.id, geaendertAm: new Date().toISOString() });
+          // Fach ins Profil übernehmen, damit die Unit sichtbar bleibt
+          if (ctx.profil.fachIds?.length && !ctx.profil.fachIds.includes(ziel.fachId)) {
+            const p = await db.get('profile', ctx.profil.id); p.fachIds = [...p.fachIds, ziel.fachId]; await db.put('profile', p);
+          }
+          const zf = getFach(ziel.fachId);
+          toast(`Verschoben nach ${lehrwerkName(ziel)} ✓${zf?.formenTyp === 'latein' && fach.formenTyp !== 'latein' ? ' – Tipp: Für Genitiv/Stammformen die Seite neu einlesen und „aktualisieren“.' : ''}`, 5000);
+          ctx.rerender();
+        };
+      };
       $('#u-titel', root).onclick = async () => {
         const t = prompt('Neuer Titel:', unit.titel || '');
         if (t === null) return;
